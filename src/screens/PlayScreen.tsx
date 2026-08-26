@@ -3,6 +3,7 @@ import React, { useCallback, useMemo, useState, useEffect } from 'react'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Canvas, Group, Path, RoundedRect, Skia, Image as SkImage, useImage, Shadow, Rect, LinearGradient, vec, Mask, CornerPathEffect } from '@shopify/react-native-skia'
 import { useDerivedValue, useSharedValue, withTiming, withDelay, useAnimatedReaction, withSpring } from 'react-native-reanimated'
+import Animated, { FadeIn, ZoomInUp } from 'react-native-reanimated'
 import { GestureDetector, usePanGesture, Pressable } from 'react-native-gesture-handler'
 import { scheduleOnRN } from 'react-native-worklets'
 import type { SharedValue } from 'react-native-reanimated'
@@ -47,6 +48,10 @@ const PIECES = [
 
 const resetIconPath = Skia.Path.MakeFromSVGString(
     "M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"
+)
+
+const nextIconPath = Skia.Path.MakeFromSVGString(
+    "M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z"
 )
 
 // Pre-computed piece dimensions in cells (for boundary clamping)
@@ -520,11 +525,35 @@ export const PlayScreen = () => {
 
             {/* Completion overlay */}
             {isCompleted && (
-                <View style={styles.completionOverlay}>
-                    <Text style={styles.completionText}>
-                        🎉 Puzzle Complete!
-                    </Text>
-                </View>
+                <Animated.View style={styles.completionOverlay} entering={FadeIn.duration(400)}>
+                    <View style={{ alignItems: 'center' }}>
+                        <Animated.Text 
+                            entering={ZoomInUp.duration(500)} 
+                            style={styles.completionText}
+                        >
+                            WELL DONE!
+                        </Animated.Text>
+                        
+                        <Animated.View entering={ZoomInUp.duration(500).delay(200)}>
+                            <Pressable onPress={() => {}} style={{ width: 120, height: 60, marginTop: 32 }}>
+                                <Canvas style={{ flex: 1 }}>
+                                    {/* 1. Drop shadow */}
+                                    <RoundedRect x={0} y={10} width={120} height={50} r={16} color="rgba(0,0,0,0.15)" />
+                                    {/* 2. 3D Edge */}
+                                    <RoundedRect x={0} y={6} width={120} height={48} r={16} color="#3d2a1d" />
+                                    {/* 3. Top Face */}
+                                    <RoundedRect x={0} y={0} width={120} height={48} r={16} color="#5a4230" />
+                                    {/* 4. Icon */}
+                                    {nextIconPath && (
+                                        <Group transform={[{ translateX: 42 }, { translateY: 6 }, { scale: 1.5 }]}>
+                                            <Path path={nextIconPath} color="white" />
+                                        </Group>
+                                    )}
+                                </Canvas>
+                            </Pressable>
+                        </Animated.View>
+                    </View>
+                </Animated.View>
             )}
         </SafeAreaView>
     )
@@ -576,13 +605,18 @@ const styles = StyleSheet.create({
     },
     completionOverlay: {
         ...StyleSheet.absoluteFill,
-        backgroundColor: 'rgba(0, 0, 0, 0.6)',
+        backgroundColor: 'rgba(0, 0, 0, 0.4)',
         alignItems: 'center',
         justifyContent: 'center',
+        zIndex: 100,
     },
     completionText: {
-        fontSize: 28,
-        fontWeight: '800',
+        fontSize: 48,
+        fontWeight: '900',
         color: '#fff',
+        letterSpacing: 2,
+        textShadowColor: 'rgba(0, 0, 0, 0.4)',
+        textShadowOffset: { width: 0, height: 4 },
+        textShadowRadius: 8,
     },
 })
