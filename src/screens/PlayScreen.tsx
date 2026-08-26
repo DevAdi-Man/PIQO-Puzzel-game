@@ -1,8 +1,8 @@
 import { View, Text, useWindowDimensions, StyleSheet } from 'react-native'
-import React, { useCallback, useMemo, useState } from 'react'
+import React, { useCallback, useMemo, useState, useEffect } from 'react'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Canvas, Group, Path, RoundedRect, Skia, Image as SkImage, useImage, Shadow, Rect, LinearGradient, vec, Mask, CornerPathEffect } from '@shopify/react-native-skia'
-import { useDerivedValue, useSharedValue, withTiming, withDelay, useAnimatedReaction } from 'react-native-reanimated'
+import { useDerivedValue, useSharedValue, withTiming, withDelay, useAnimatedReaction, withSpring } from 'react-native-reanimated'
 import { GestureDetector, usePanGesture } from 'react-native-gesture-handler'
 import { scheduleOnRN } from 'react-native-worklets'
 import type { SharedValue } from 'react-native-reanimated'
@@ -54,17 +54,36 @@ const PIECE_DIMS = PIECES.map(p => ({
 
 
 // ── Per-piece state hook ──────────────────────────────────────────
+
 function usePieceState(
     initialX: number,
     initialY: number,
-    isPuzzleCompleted: SharedValue<boolean>
+    isPuzzleCompleted: SharedValue<boolean>,
+    index: number
 ) {
     const posX = useSharedValue(initialX)
     const posY = useSharedValue(initialY)
+    const entranceY = useSharedValue(-1200)
+
+    useEffect(() => {
+        // Ensure it starts off-screen (useful for fast-refresh)
+        entranceY.value = -1200;
+        
+        // Wait 1.2 seconds to ensure the screen is fully laid out and the user is ready
+        const timeout = setTimeout(() => {
+            entranceY.value = withSpring(0, {
+                damping: 14,
+                stiffness: 80, // slightly softer
+                mass: 1
+            })
+        }, 1200 + index * 180) // 1200ms base delay + 180ms stagger
+
+        return () => clearTimeout(timeout)
+    }, [index, entranceY])
 
     const transform = useDerivedValue(() => [
         { translateX: posX.value },
-        { translateY: posY.value },
+        { translateY: posY.value + entranceY.value },
     ])
 
     return { posX, posY, transform }
@@ -109,10 +128,10 @@ export const PlayScreen = () => {
 
 
     // ── Create state for each piece ───────────────────────────────
-    const s0 = usePieceState(PIECES[0].spawn.x * STEP, PIECES[0].spawn.y * STEP, isPuzzleCompleted)
-    const s1 = usePieceState(PIECES[1].spawn.x * STEP, PIECES[1].spawn.y * STEP, isPuzzleCompleted)
-    const s2 = usePieceState(PIECES[2].spawn.x * STEP, PIECES[2].spawn.y * STEP, isPuzzleCompleted)
-    const s3 = usePieceState(PIECES[3].spawn.x * STEP, PIECES[3].spawn.y * STEP, isPuzzleCompleted)
+    const s0 = usePieceState(PIECES[0].spawn.x * STEP, PIECES[0].spawn.y * STEP, isPuzzleCompleted, 0)
+    const s1 = usePieceState(PIECES[1].spawn.x * STEP, PIECES[1].spawn.y * STEP, isPuzzleCompleted, 1)
+    const s2 = usePieceState(PIECES[2].spawn.x * STEP, PIECES[2].spawn.y * STEP, isPuzzleCompleted, 2)
+    const s3 = usePieceState(PIECES[3].spawn.x * STEP, PIECES[3].spawn.y * STEP, isPuzzleCompleted, 3)
 
     const pieceStates = [s0, s1, s2, s3]
 
