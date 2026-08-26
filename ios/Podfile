@@ -5,6 +5,13 @@ require Pod::Executable.execute_command('node', ['-p',
     {paths: [process.argv[1]]},
   )', __dir__]).strip
 
+require Pod::Executable.execute_command('node', ['-p',
+   'require.resolve(
+   "@rnrepo/build-tools/cocoapods-plugin/lib/plugin.rb",
+   {paths: [process.argv[1]]},
+)', __dir__]).strip
+
+
 platform :ios, min_ios_version_supported
 prepare_react_native_project!
 
@@ -28,6 +35,7 @@ target 'LearningSkia' do
       installer,
       config[:reactNativePath],
       :mac_catalyst_enabled => false,
+      rnrepo_post_install(installer)
       # :ccache_enabled => true
     )
   end
