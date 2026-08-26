@@ -100,11 +100,7 @@ export const PlayScreen = () => {
         (completed, wasCompleted) => {
             if (completed && !wasCompleted) {
                 // Sweep the shine across the puzzle after a slight delay
-                shineX.value = withDelay(400, withTiming(boardSize * 1.5, { duration: 1000 }, (finished) => {
-                    if (finished) {
-                        scheduleOnRN(onPuzzleComplete)
-                    }
-                }))
+                shineX.value = withDelay(400, withTiming(boardSize * 1.5, { duration: 1000 }))
             }
         }
     )
@@ -138,7 +134,9 @@ export const PlayScreen = () => {
 
     // ── Completion callback ───────────────────────────────────────
     const onPuzzleComplete = useCallback(() => {
-        setIsCompleted(true)
+        setTimeout(() => {
+            setIsCompleted(true)
+        }, 1500)
     }, [])
 
     // ── Build piece paths ─────────────────────────────────────────
@@ -266,6 +264,7 @@ export const PlayScreen = () => {
 
                 if (isComplete) {
                     isPuzzleCompleted.value = true
+                    scheduleOnRN(onPuzzleComplete)
                 }
             }
 
