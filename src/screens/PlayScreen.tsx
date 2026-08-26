@@ -1,7 +1,7 @@
 import { View, Text, useWindowDimensions, StyleSheet } from 'react-native'
 import React, { useCallback, useMemo, useState } from 'react'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { Canvas, Group, Path, RoundedRect, Skia, Image as SkImage, useImage, Shadow, Rect, LinearGradient, vec } from '@shopify/react-native-skia'
+import { Canvas, Group, Path, RoundedRect, Skia, Image as SkImage, useImage, Shadow, Rect, LinearGradient, vec, Mask, CornerPathEffect } from '@shopify/react-native-skia'
 import { useDerivedValue, useSharedValue, withTiming, withDelay, useAnimatedReaction } from 'react-native-reanimated'
 import { GestureDetector, usePanGesture } from 'react-native-gesture-handler'
 import { scheduleOnRN } from 'react-native-worklets'
@@ -322,13 +322,21 @@ export const PlayScreen = () => {
                                         path={piecePaths[i]}
                                         color="#3d2a1d"
                                         transform={[{ translateY: 6 }]}
-                                    />
+                                    >
+                                        <CornerPathEffect r={6} />
+                                    </Path>
                                 </Group>
                             ))}
                             {/* Pass 2: Base Images */}
                             {basePieces.map((i) => (
                                 <Group key={`image-${PIECES[i].id}`} transform={pieceStates[i].transform}>
-                                    <Group clip={piecePaths[i]}>
+                                    <Mask
+                                        mask={
+                                            <Path path={piecePaths[i]} color="white">
+                                                <CornerPathEffect r={6} />
+                                            </Path>
+                                        }
+                                    >
                                         <SkImage
                                             image={image}
                                             x={-PIECES[i].target.x * STEP - GAP / 2}
@@ -337,7 +345,7 @@ export const PlayScreen = () => {
                                             height={4 * STEP}
                                             fit="fill"
                                         />
-                                    </Group>
+                                    </Mask>
                                 </Group>
                             ))}
                         </Group>
@@ -350,9 +358,17 @@ export const PlayScreen = () => {
                                     path={piecePaths[frontPiece]}
                                     color="#3d2a1d"
                                     transform={[{ translateY: 8 }]}
-                                />
+                                >
+                                    <CornerPathEffect r={6} />
+                                </Path>
                                 {/* Lifted Image */}
-                                <Group clip={piecePaths[frontPiece]}>
+                                <Mask
+                                    mask={
+                                        <Path path={piecePaths[frontPiece]} color="white">
+                                            <CornerPathEffect r={6} />
+                                        </Path>
+                                    }
+                                >
                                     <SkImage
                                         image={image}
                                         x={-PIECES[frontPiece].target.x * STEP - GAP / 2}
@@ -361,13 +377,13 @@ export const PlayScreen = () => {
                                         height={4 * STEP}
                                         fit="fill"
                                     />
-                                </Group>
+                                </Mask>
                             </Group>
                         )}
 
                         {/* ── Completion Shine ── */}
                         <Group transform={puzzleTransform} opacity={completedOpacity}>
-                            <Group clip={Skia.XYWHRect(-GAP / 2, -GAP / 2, 4 * STEP, 4 * STEP)} blendMode="screen">
+                            <Group clip={Skia.RRectXY(Skia.XYWHRect(-GAP / 2, -GAP / 2, 4 * STEP, 4 * STEP), 12, 12)} blendMode="screen">
                                 <Rect
                                     x={-GAP / 2}
                                     y={-GAP / 2}
