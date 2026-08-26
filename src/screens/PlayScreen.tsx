@@ -3,7 +3,7 @@ import React, { useCallback, useMemo, useState, useEffect } from 'react'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Canvas, Group, Path, RoundedRect, Skia, Image as SkImage, useImage, Shadow, Rect, LinearGradient, vec, Mask, CornerPathEffect } from '@shopify/react-native-skia'
 import { useDerivedValue, useSharedValue, withTiming, withDelay, useAnimatedReaction, withSpring } from 'react-native-reanimated'
-import { GestureDetector, usePanGesture } from 'react-native-gesture-handler'
+import { GestureDetector, usePanGesture, Pressable } from 'react-native-gesture-handler'
 import { scheduleOnRN } from 'react-native-worklets'
 import type { SharedValue } from 'react-native-reanimated'
 
@@ -44,6 +44,10 @@ const PIECES = [
         color: '#b573cf',
     },
 ]
+
+const resetIconPath = Skia.Path.MakeFromSVGString(
+    "M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"
+)
 
 // Pre-computed piece dimensions in cells (for boundary clamping)
 const PIECE_DIMS = PIECES.map(p => ({
@@ -106,6 +110,23 @@ export const PlayScreen = () => {
     const activePieceIndex = useSharedValue(-1)
     const start = useSharedValue({ x: 0, y: 0 })
 
+    // ── Timer State ───────────────────────────────────────────────
+    const [timeLeft, setTimeLeft] = useState(300) // 5:00 minutes
+
+    useEffect(() => {
+        const interval = setInterval(() => {
+            setTimeLeft((prev) => {
+                if (isPuzzleCompleted.value || prev <= 0) return prev;
+                return prev - 1;
+            })
+        }, 1000)
+        return () => clearInterval(interval)
+    }, [isPuzzleCompleted])
+
+    const mins = Math.floor(timeLeft / 60)
+    const secs = (timeLeft % 60).toString().padStart(2, '0')
+    const timeString = `${mins}:${secs}`
+
     const borderOpacity = useDerivedValue(() =>
         withTiming(isPuzzleCompleted.value ? 0 : 1, { duration: 400 })
     )
@@ -157,6 +178,20 @@ export const PlayScreen = () => {
             setIsCompleted(true)
         }, 1500)
     }, [])
+
+    // ── Reset logic ───────────────────────────────────────────────
+    const resetLevel = useCallback(() => {
+        setIsCompleted(false)
+        isPuzzleCompleted.value = false
+        activePieceIndex.value = -1
+        setTimeLeft(300)
+
+        // Reset pieces to spawn locations
+        for (let i = 0; i < PIECES.length; i++) {
+            allPosX[i].value = withSpring(PIECES[i].spawn.x * STEP)
+            allPosY[i].value = withSpring(PIECES[i].spawn.y * STEP)
+        }
+    }, [allPosX, allPosY, isPuzzleCompleted, activePieceIndex, STEP])
 
     // ── Build piece paths ─────────────────────────────────────────
     const piecePaths = useMemo(() => {
@@ -304,11 +339,39 @@ export const PlayScreen = () => {
     const basePieces = [0, 1, 2, 3].filter(i => i !== frontPiece)
 
     return (
-        <SafeAreaView style={{ flex: 1, backgroundColor: '#f7e5d0' }}>
-            <View style={styles.header}>
-                <Text style={styles.headerText}>
-                    DRAG THE BLOCKS TO COMPLETE THE PICTURE
-                </Text>
+        <SafeAreaView style={{ flex: 1, backgroundColor: '#e4dccf' }}>
+            {/* ── UI Header ── */}
+            <View style={styles.headerContainer}>
+                <View style={styles.headerCenter}>
+                    <Text style={styles.levelText}>LEVEL 1</Text>
+                    <View style={{ width: 100, height: 44, marginTop: 6, justifyContent: 'center', alignItems: 'center' }}>
+                        <Canvas style={{ ...StyleSheet.absoluteFill }}>
+                            {/* 1. Drop shadow */}
+                            <RoundedRect x={0} y={6} width={100} height={38} r={18} color="rgba(0,0,0,0.15)" />
+                            {/* 2. 3D Edge */}
+                            <RoundedRect x={0} y={4} width={100} height={36} r={18} color="#d8cfb8" />
+                            {/* 3. Top Face */}
+                            <RoundedRect x={0} y={0} width={100} height={36} r={18} color="#f8f4e6" />
+                        </Canvas>
+                        <Text style={{ fontSize: 20, fontWeight: '900', color: '#5a4230' }}>{timeString}</Text>
+                    </View>
+                </View>
+                <Pressable onPress={resetLevel} style={{ position: 'absolute', right: 20, top: 16, width: 48, height: 48 }}>
+                    <Canvas style={{ flex: 1 }}>
+                        {/* 1. Drop shadow */}
+                        <RoundedRect x={0} y={6} width={48} height={42} r={12} color="rgba(0,0,0,0.15)" />
+                        {/* 2. 3D Edge */}
+                        <RoundedRect x={0} y={4} width={48} height={40} r={12} color="#d8cfb8" />
+                        {/* 3. Top Face */}
+                        <RoundedRect x={0} y={0} width={48} height={40} r={12} color="#f8f4e6" />
+                        {/* 4. Icon */}
+                        {resetIconPath && (
+                            <Group transform={[{ translateX: 10.5 }, { translateY: 6.5 }, { scale: 1.15 }]}>
+                                <Path path={resetIconPath} color="#5a4230" />
+                            </Group>
+                        )}
+                    </Canvas>
+                </Pressable>
             </View>
 
             <View style={styles.boardContainer}>
@@ -334,13 +397,25 @@ export const PlayScreen = () => {
 
                         {/* ── Base Layer (Inactive Pieces) ── */}
                         <Group>
-                            {/* Pass 1: Base Shadows */}
+                            {/* Pass 0: Base Drop Shadows */}
                             {basePieces.map((i) => (
-                                <Group key={`shadow-${PIECES[i].id}`} transform={pieceStates[i].transform}>
+                                <Group key={`drop-shadow-${PIECES[i].id}`} transform={pieceStates[i].transform}>
+                                    <Path
+                                        path={piecePaths[i]}
+                                        color="rgba(0,0,0,0.15)"
+                                        transform={[{ translateY: 10 }]}
+                                    >
+                                        <CornerPathEffect r={6} />
+                                    </Path>
+                                </Group>
+                            ))}
+                            {/* Pass 1: Base 3D Edges */}
+                            {basePieces.map((i) => (
+                                <Group key={`edge-${PIECES[i].id}`} transform={pieceStates[i].transform}>
                                     <Path
                                         path={piecePaths[i]}
                                         color="#3d2a1d"
-                                        transform={[{ translateY: 6 }]}
+                                        transform={[{ translateY: 5 }]}
                                     >
                                         <CornerPathEffect r={6} />
                                     </Path>
@@ -372,7 +447,15 @@ export const PlayScreen = () => {
                         {/* ── Lifted Layer (Active Piece) ── */}
                         {frontPiece !== -1 && (
                             <Group transform={pieceStates[frontPiece].transform}>
-                                {/* Lifted Shadow (Casts over base layer) */}
+                                {/* Lifted Drop Shadow */}
+                                <Path
+                                    path={piecePaths[frontPiece]}
+                                    color="rgba(0,0,0,0.2)"
+                                    transform={[{ translateY: 14 }]}
+                                >
+                                    <CornerPathEffect r={6} />
+                                </Path>
+                                {/* Lifted 3D Edge */}
                                 <Path
                                     path={piecePaths[frontPiece]}
                                     color="#3d2a1d"
@@ -428,6 +511,13 @@ export const PlayScreen = () => {
                 </GestureDetector>
             </View>
 
+            {/* ── UI Footer ── */}
+            <View style={styles.footerContainer}>
+                <Text style={styles.footerText}>
+                    DRAG THE BLOCKS TO COMPLETE{'\n'}THE PICTURE
+                </Text>
+            </View>
+
             {/* Completion overlay */}
             {isCompleted && (
                 <View style={styles.completionOverlay}>
@@ -441,11 +531,6 @@ export const PlayScreen = () => {
 }
 
 const styles = StyleSheet.create({
-    header: {
-        paddingHorizontal: 20,
-        paddingTop: 16,
-        alignItems: 'center',
-    },
     headerText: {
         fontSize: 16,
         fontWeight: '700',
@@ -453,10 +538,41 @@ const styles = StyleSheet.create({
         letterSpacing: 1,
         textAlign: 'center',
     },
+    headerContainer: {
+        width: '100%',
+        paddingTop: 16,
+        paddingHorizontal: 20,
+        flexDirection: 'row',
+        justifyContent: 'center',
+        alignItems: 'flex-start',
+        position: 'relative',
+        zIndex: 10,
+    },
+    headerCenter: {
+        alignItems: 'center',
+    },
+    levelText: {
+        fontSize: 18,
+        fontWeight: '900',
+        color: '#5a4230',
+        letterSpacing: 1,
+    },
     boardContainer: {
         flex: 1,
         alignItems: 'center',
         justifyContent: 'center',
+    },
+    footerContainer: {
+        paddingBottom: 40,
+        paddingHorizontal: 20,
+        alignItems: 'center',
+    },
+    footerText: {
+        fontSize: 20,
+        fontWeight: '800',
+        color: '#5a4230',
+        textAlign: 'center',
+        lineHeight: 28,
     },
     completionOverlay: {
         ...StyleSheet.absoluteFill,
