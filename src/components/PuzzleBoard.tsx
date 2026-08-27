@@ -439,25 +439,13 @@ export const PuzzleBoard = ({ levelData, image, onPuzzleSolved }: PuzzleBoardPro
                         )}
                     </Group>
 
-                    <Mask mask={<Path path={basePiecesUnion} color="white" transform={[{ translateY: 10 }]}><CornerPathEffect r={6} /></Path>}>
-                        <Group>
-                            {snappedPieces.map((i) => (
-                                <Group key={`drop-shadow-${PIECES[i].id}`} transform={pieceStates[i].transform}>
-                                    <Path path={piecePaths[i]} color="rgba(0,0,0,0.15)" transform={[{ translateY: 10 }]} />
-                                </Group>
-                            ))}
-                        </Group>
-                    </Mask>
+                    <Path path={basePiecesUnion} color="rgba(0,0,0,0.15)" transform={[{ translateY: 10 }]}>
+                        <CornerPathEffect r={6} />
+                    </Path>
 
-                    <Mask mask={<Path path={basePiecesUnion} color="white" transform={[{ translateY: 5 }]}><CornerPathEffect r={6} /></Path>}>
-                        <Group>
-                            {snappedPieces.map((i) => (
-                                <Group key={`edge-${PIECES[i].id}`} transform={pieceStates[i].transform}>
-                                    <Path path={piecePaths[i]} color="#3d2a1d" transform={[{ translateY: 5 }]} />
-                                </Group>
-                            ))}
-                        </Group>
-                    </Mask>
+                    <Path path={basePiecesUnion} color="#3d2a1d" transform={[{ translateY: 5 }]}>
+                        <CornerPathEffect r={6} />
+                    </Path>
 
                     <Mask mask={<Path path={basePiecesUnion} color="white"><CornerPathEffect r={6} /></Path>}>
                         <Group>
