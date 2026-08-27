@@ -383,12 +383,6 @@ export const PuzzleBoard = ({ levelData, image, onPuzzleSolved }: PuzzleBoardPro
                 const snappedX = gridX * STEP
                 const snappedY = gridY * STEP
 
-                pieceStates[i].posX.value = withTiming(snappedX, { duration: 150 })
-                pieceStates[i].posY.value = withTiming(snappedY, { duration: 150 }, () => {
-                    activePieceIndex.value = -1
-                    scheduleOnRN(dropToLayer)
-                })
-
                 const gridPositions = PIECES.map((_, idx) => {
                     if (idx === i) return { x: gridX, y: gridY }
                     return {
@@ -403,10 +397,15 @@ export const PuzzleBoard = ({ levelData, image, onPuzzleSolved }: PuzzleBoardPro
                     return pos.x === PIECES[idx].target.x + dx && pos.y === PIECES[idx].target.y + dy
                 })
 
-                if (isComplete) {
-                    isPuzzleCompleted.value = true
-                    scheduleOnRN(handlePuzzleSolved)
-                }
+                pieceStates[i].posX.value = withTiming(snappedX, { duration: 150 })
+                pieceStates[i].posY.value = withTiming(snappedY, { duration: 150 }, () => {
+                    activePieceIndex.value = -1
+                    scheduleOnRN(dropToLayer)
+                    if (isComplete) {
+                        isPuzzleCompleted.value = true
+                        scheduleOnRN(handlePuzzleSolved)
+                    }
+                })
             } else {
                 activePieceIndex.value = -1
                 scheduleOnRN(dropToLayer)

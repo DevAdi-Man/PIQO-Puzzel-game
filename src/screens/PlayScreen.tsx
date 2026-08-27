@@ -1,9 +1,8 @@
-import { View, Text, StyleSheet } from 'react-native'
+import { View, Text, StyleSheet, Pressable } from 'react-native'
 import React, { useCallback, useState, useEffect } from 'react'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Canvas, Group, Path, RoundedRect, Skia, useImage } from '@shopify/react-native-skia'
 import Animated, { FadeIn, ZoomInUp } from 'react-native-reanimated'
-import { Pressable } from 'react-native-gesture-handler'
 
 import { useLevelStore } from '../store/useLevelStore'
 import { PuzzleBoard, LevelData } from '../components/PuzzleBoard'
@@ -25,14 +24,14 @@ const ImageAssets: Record<string, any> = {
 // ── Icons ─────────────────────────────────────────────────────────
 const resetIconPath = Skia.Path.MakeFromSVGString(
     "M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"
-)
+)!
 const nextIconPath = Skia.Path.MakeFromSVGString(
     "M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z"
-)
+)!
 
 export const PlayScreen = () => {
     // ── Persistent State ──────────────────────────────────────────
-    const { currentLevelId, completeLevel } = useLevelStore()
+    const { currentLevelId, completeLevel, resetProgress } = useLevelStore()
     
     // Find the level config from the JSON file
     const levelData = levelsData.find(l => l.level_id === currentLevelId) || levelsData[0]
@@ -52,7 +51,12 @@ export const PlayScreen = () => {
         setTimeLeft(300)
         setIsSolved(false)
         setShowOverlay(false)
-    }, [currentLevelId, resetKey])
+        
+        // Auto-correct invalid level states (e.g., if user was on level 15 before we clamped it)
+        if (currentLevelId > levelsData.length) {
+            resetProgress()
+        }
+    }, [currentLevelId, resetKey, resetProgress])
 
     useEffect(() => {
         const interval = setInterval(() => {
@@ -76,9 +80,15 @@ export const PlayScreen = () => {
         }, 1500)
     }, [])
 
+    const isFinalLevel = currentLevelId >= levelsData.length;
+
     const handleLevelComplete = useCallback(() => {
-        completeLevel() // Proceed to the next level in MMKV state
-    }, [completeLevel])
+        if (isFinalLevel) {
+            resetProgress()
+        } else {
+            completeLevel() // Proceed to the next level in MMKV state
+        }
+    }, [completeLevel, resetProgress, isFinalLevel])
 
     const handleResetLevel = useCallback(() => {
         setResetKey(k => k + 1) // Updating this key causes PuzzleBoard to completely remount!
@@ -157,8 +167,8 @@ export const PlayScreen = () => {
                                     <RoundedRect x={0} y={6} width={120} height={48} r={16} color="#3d2a1d" />
                                     <RoundedRect x={0} y={0} width={120} height={48} r={16} color="#5a4230" />
                                     {nextIconPath && (
-                                        <Group transform={[{ translateX: 42 }, { translateY: 6 }, { scale: 1.5 }]}>
-                                            <Path path={nextIconPath} color="white" />
+                                        <Group transform={[{ translateX: isFinalLevel ? 44 : 42 }, { translateY: isFinalLevel ? 8 : 6 }, { scale: isFinalLevel ? 1.2 : 1.5 }]}>
+                                            <Path path={isFinalLevel ? resetIconPath : nextIconPath} color="white" />
                                         </Group>
                                     )}
                                 </Canvas>
