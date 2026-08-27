@@ -254,6 +254,7 @@ export const PuzzleBoard = ({ levelData, image, onPuzzleSolved }: PuzzleBoardPro
     const piecePaths = useMemo(() => {
         return PIECES.map((piece) => {
             const path = Skia.Path.Make()
+            let first = true
             for (const cell of piece.cells) {
                 const cellP = Skia.Path.Make()
                 cellP.addRect(
@@ -264,7 +265,12 @@ export const PuzzleBoard = ({ levelData, image, onPuzzleSolved }: PuzzleBoardPro
                         STEP + 1
                     )
                 )
-                path.op(cellP, PathOp.Union)
+                if (first) {
+                    path.addPath(cellP)
+                    first = false
+                } else {
+                    path.op(cellP, PathOp.Union)
+                }
             }
             return path
         })
@@ -273,6 +279,7 @@ export const PuzzleBoard = ({ levelData, image, onPuzzleSolved }: PuzzleBoardPro
     const pieceMaskPaths = useMemo(() => {
         return PIECES.map((piece) => {
             const path = Skia.Path.Make()
+            let first = true
             for (const cell of piece.cells) {
                 const cellP = Skia.Path.Make()
                 cellP.addRect(
@@ -283,7 +290,12 @@ export const PuzzleBoard = ({ levelData, image, onPuzzleSolved }: PuzzleBoardPro
                         STEP + 16
                     )
                 )
-                path.op(cellP, PathOp.Union)
+                if (first) {
+                    path.addPath(cellP)
+                    first = false
+                } else {
+                    path.op(cellP, PathOp.Union)
+                }
             }
             return path
         })
