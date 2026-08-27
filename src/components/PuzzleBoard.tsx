@@ -251,25 +251,40 @@ export const PuzzleBoard = ({ levelData, image, onPuzzleSolved }: PuzzleBoardPro
         // Expose logic to reset if parent changes key
     }, [])
 
-    // ── Build piece paths ─────────────────────────────────────────
     const piecePaths = useMemo(() => {
         return PIECES.map((piece) => {
             const path = Skia.Path.Make()
             for (const cell of piece.cells) {
-                path.addRRect(
-                    Skia.RRectXY(
-                        Skia.XYWHRect(
-                            cell.x * STEP - GAP / 2 - 0.5,
-                            cell.y * STEP - GAP / 2 - 0.5,
-                            STEP + 1,
-                            STEP + 1
-                        ),
-                        1,
-                        1
+                const cellP = Skia.Path.Make()
+                cellP.addRect(
+                    Skia.XYWHRect(
+                        cell.x * STEP - GAP / 2 - 0.5,
+                        cell.y * STEP - GAP / 2 - 0.5,
+                        STEP + 1,
+                        STEP + 1
                     )
                 )
+                path.op(cellP, PathOp.Union)
             }
-            path.simplify()
+            return path
+        })
+    }, [STEP, PIECES])
+
+    const pieceMaskPaths = useMemo(() => {
+        return PIECES.map((piece) => {
+            const path = Skia.Path.Make()
+            for (const cell of piece.cells) {
+                const cellP = Skia.Path.Make()
+                cellP.addRect(
+                    Skia.XYWHRect(
+                        cell.x * STEP - GAP / 2 - 8,
+                        cell.y * STEP - GAP / 2 - 8,
+                        STEP + 16,
+                        STEP + 16
+                    )
+                )
+                path.op(cellP, PathOp.Union)
+            }
             return path
         })
     }, [STEP, PIECES])
@@ -289,16 +304,12 @@ export const PuzzleBoard = ({ levelData, image, onPuzzleSolved }: PuzzleBoardPro
                 const absY = gridY + cell.y;
                 
                 const cellP = Skia.Path.Make();
-                cellP.addRRect(
-                    Skia.RRectXY(
-                        Skia.XYWHRect(
-                            absX * STEP - GAP / 2 - 0.5,
-                            absY * STEP - GAP / 2 - 0.5,
-                            STEP + 1,
-                            STEP + 1
-                        ),
-                        1,
-                        1
+                cellP.addRect(
+                    Skia.XYWHRect(
+                        absX * STEP - GAP / 2 - 1,
+                        absY * STEP - GAP / 2 - 1,
+                        STEP + 2,
+                        STEP + 2
                     )
                 );
 
@@ -447,11 +458,24 @@ export const PuzzleBoard = ({ levelData, image, onPuzzleSolved }: PuzzleBoardPro
                         <CornerPathEffect r={6} />
                     </Path>
 
+                    {/* Floating Pieces Shadows & Edges (Underneath snapped images) */}
+                    {floatingPieces.map(i => (
+                        <Group key={`floating-shadow-${PIECES[i].id}`} transform={pieceStates[i].transform}>
+                            <Path path={piecePaths[i]} color="rgba(0,0,0,0.2)" transform={[{ translateY: i === frontPiece ? 14 : 10 }]}>
+                                <CornerPathEffect r={6} />
+                            </Path>
+                            <Path path={piecePaths[i]} color="#3d2a1d" transform={[{ translateY: i === frontPiece ? 8 : 5 }]}>
+                                <CornerPathEffect r={6} />
+                            </Path>
+                        </Group>
+                    ))}
+
+                    {/* Snapped Pieces Images */}
                     <Mask mask={<Path path={basePiecesUnion} color="white"><CornerPathEffect r={6} /></Path>}>
                         <Group>
                             {snappedPieces.map((i) => (
                                 <Group key={`image-${PIECES[i].id}`} transform={pieceStates[i].transform}>
-                                    <Mask mask={<Path path={piecePaths[i]} color="white" />}>
+                                    <Mask mask={<Path path={pieceMaskPaths[i]} color="white" />}>
                                         {image && (
                                             <SkImage
                                                 image={image}
@@ -468,14 +492,9 @@ export const PuzzleBoard = ({ levelData, image, onPuzzleSolved }: PuzzleBoardPro
                         </Group>
                     </Mask>
 
+                    {/* Floating Pieces Images (On top of everything) */}
                     {floatingPieces.map(i => (
-                        <Group key={`floating-${PIECES[i].id}`} transform={pieceStates[i].transform}>
-                            <Path path={piecePaths[i]} color="rgba(0,0,0,0.2)" transform={[{ translateY: i === frontPiece ? 14 : 10 }]}>
-                                <CornerPathEffect r={6} />
-                            </Path>
-                            <Path path={piecePaths[i]} color="#3d2a1d" transform={[{ translateY: i === frontPiece ? 8 : 5 }]}>
-                                <CornerPathEffect r={6} />
-                            </Path>
+                        <Group key={`floating-image-${PIECES[i].id}`} transform={pieceStates[i].transform}>
                             <Mask mask={<Path path={piecePaths[i]} color="white"><CornerPathEffect r={6} /></Path>}>
                                 {image && (
                                     <SkImage
