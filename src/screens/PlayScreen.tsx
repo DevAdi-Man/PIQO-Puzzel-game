@@ -3,6 +3,7 @@ import React, { useCallback, useState, useEffect } from 'react'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Canvas, Group, Path, RoundedRect, Skia, useImage } from '@shopify/react-native-skia'
 import Animated, { FadeIn, ZoomInUp, useSharedValue, useDerivedValue, withSpring } from 'react-native-reanimated'
+import { useNavigation } from '@react-navigation/native'
 
 import { useLevelStore } from '../store/useLevelStore'
 import { PuzzleBoard, LevelData } from '../components/PuzzleBoard'
@@ -16,9 +17,13 @@ const levelsData = levelsDataJson as LevelData[]
 // This map makes it incredibly easy to swap out images in the future
 // while dynamically choosing them based on levels.json.
 const ImageAssets: Record<string, any> = {
-    'puzzle1': require('../assets/images/puzzle.jpg'),
-    'puzzle2': require('../assets/images/puzzle.jpg'), // Using the same image for now
-    'puzzle3': require('../assets/images/puzzle.jpg'), // Using the same image for now
+    'img1': require('../assets/images/img1.jpg'),
+    'img2': require('../assets/images/img2.jpg'),
+    'img3': require('../assets/images/img3.jpg'),
+    'img4': require('../assets/images/img4.jpg'),
+    'img5': require('../assets/images/img5.jpg'),
+    'img6': require('../assets/images/img6.jpg'),
+    'img7': require('../assets/images/img7.jpg'),
 }
 
 // ── Icons ─────────────────────────────────────────────────────────
@@ -28,8 +33,12 @@ const resetIconPath = Skia.Path.MakeFromSVGString(
 const nextIconPath = Skia.Path.MakeFromSVGString(
     "M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z"
 )!
+const backIconPath = Skia.Path.MakeFromSVGString(
+    "M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"
+)!
 
 export const PlayScreen = () => {
+    const navigation = useNavigation<any>()
     // ── Persistent State ──────────────────────────────────────────
     const { currentLevelId, completeLevel, resetProgress } = useLevelStore()
     
@@ -37,7 +46,7 @@ export const PlayScreen = () => {
     const levelData = levelsData.find(l => l.level_id === currentLevelId) || levelsData[0]
 
     // Load the correct mapped image
-    const imageResource = ImageAssets[levelData.image] || ImageAssets['puzzle1']
+    const imageResource = ImageAssets[levelData.image] || ImageAssets['img1']
     const image = useImage(imageResource)
 
     // ── Timer State ───────────────────────────────────────────────
@@ -52,6 +61,9 @@ export const PlayScreen = () => {
 
     const topResetPressY = useSharedValue(0)
     const topResetTransform = useDerivedValue(() => [{ translateY: topResetPressY.value }])
+
+    const topBackPressY = useSharedValue(0)
+    const topBackTransform = useDerivedValue(() => [{ translateY: topBackPressY.value }])
 
     // Reset timer state when a new level mounts or user taps "Reset"
     useEffect(() => {
@@ -114,6 +126,25 @@ export const PlayScreen = () => {
             <SafeAreaView style={{ flex: 1 }}>
                 {/* ── UI Header ── */}
                 <View style={styles.headerContainer}>
+                    <Pressable 
+                        onPress={() => navigation.goBack()} 
+                        onPressIn={() => topBackPressY.value = withSpring(4, { damping: 12, stiffness: 200 })}
+                        onPressOut={() => topBackPressY.value = withSpring(0, { damping: 12, stiffness: 200 })}
+                        style={{ position: 'absolute', left: 20, top: 16, width: 48, height: 48, zIndex: 10 }}
+                    >
+                        <Canvas style={{ flex: 1 }}>
+                            <RoundedRect x={0} y={6} width={48} height={42} r={12} color="rgba(0,0,0,0.15)" />
+                            <RoundedRect x={0} y={4} width={48} height={40} r={12} color="#d8cfb8" />
+                            <Group transform={topBackTransform}>
+                                <RoundedRect x={0} y={0} width={48} height={40} r={12} color="#f8f4e6" />
+                                {backIconPath && (
+                                    <Group transform={[{ translateX: 10.5 }, { translateY: 6.5 }, { scale: 1.15 }]}>
+                                        <Path path={backIconPath} color="#5a4230" />
+                                    </Group>
+                                )}
+                            </Group>
+                        </Canvas>
+                    </Pressable>
                     <View style={styles.headerCenter}>
                         <Text style={styles.levelText}>LEVEL {currentLevelId}</Text>
                         <View style={{ width: 100, height: 44, marginTop: 6, justifyContent: 'center', alignItems: 'center' }}>
@@ -122,7 +153,7 @@ export const PlayScreen = () => {
                                 <RoundedRect x={0} y={4} width={100} height={36} r={18} color="#d8cfb8" />
                                 <RoundedRect x={0} y={0} width={100} height={36} r={18} color="#f8f4e6" />
                             </Canvas>
-                            <Text style={{ fontSize: 20, fontWeight: '900', color: '#5a4230' }}>{timeString}</Text>
+                            <Text style={{ fontSize: 20, fontFamily: 'Nunito-ExtraBold', color: '#5a4230' }}>{timeString}</Text>
                         </View>
                     </View>
                     <Pressable 
@@ -205,7 +236,7 @@ export const PlayScreen = () => {
 const styles = StyleSheet.create({
     headerText: {
         fontSize: 16,
-        fontWeight: '700',
+        fontFamily: 'Nunito-ExtraBold',
         color: '#5a4230',
         letterSpacing: 1,
         textAlign: 'center',
@@ -225,7 +256,7 @@ const styles = StyleSheet.create({
     },
     levelText: {
         fontSize: 18,
-        fontWeight: '900',
+        fontFamily: 'Nunito-ExtraBold',
         color: '#5a4230',
         letterSpacing: 1,
     },
@@ -236,7 +267,7 @@ const styles = StyleSheet.create({
     },
     footerText: {
         fontSize: 20,
-        fontWeight: '800',
+        fontFamily: 'Nunito-ExtraBold',
         color: '#5a4230',
         textAlign: 'center',
         lineHeight: 28,
@@ -250,7 +281,7 @@ const styles = StyleSheet.create({
     },
     completionText: {
         fontSize: 48,
-        fontWeight: '900',
+        fontFamily: 'Fredoka-Bold',
         color: '#fff',
         letterSpacing: 2,
         textShadowColor: 'rgba(0, 0, 0, 0.4)',

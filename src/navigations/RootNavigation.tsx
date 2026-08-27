@@ -4,16 +4,19 @@ import {
 import {
     createNativeStackNavigator,
 } from '@react-navigation/native-stack';
-import { PlayScreen } from '../screens';
+import { PlayScreen, StartScreen } from '../screens';
 
 
 const RootStack = createNativeStackNavigator({
+    initialRouteName: 'Start',
     screens: {
+        Start: {
+            screen: StartScreen,
+            options: { headerShown: false }
+        },
         Play: {
             screen: PlayScreen,
-            options: {
-                headerShown: false
-            }
+            options: { headerShown: false }
         },
     }
 })
