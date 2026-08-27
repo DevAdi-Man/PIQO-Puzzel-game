@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, Pressable } from 'react-native'
+import { View, Text, StyleSheet, Pressable, Image } from 'react-native'
 import React, { useCallback, useState, useEffect } from 'react'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Canvas, Group, Path, RoundedRect, Skia, useImage } from '@shopify/react-native-skia'
@@ -8,6 +8,18 @@ import { useNavigation } from '@react-navigation/native'
 import { useLevelStore } from '../store/useLevelStore'
 import { PuzzleBoard, LevelData } from '../components/PuzzleBoard'
 import levelsDataJson from '../assets/levels.json'
+import Sound from 'react-native-sound'
+
+Sound.setCategory('Playback')
+const popSound = new Sound(Image.resolveAssetSource(require('../assets/sounds/pop.mp3'))?.uri ?? '', '', (error) => {
+    if (error) console.log('failed to load pop sound', error);
+});
+
+const playPop = () => {
+    popSound?.stop(() => {
+        popSound?.play();
+    });
+};
 
 // Cast the JSON to our LevelData interface
 const levelsData = levelsDataJson as LevelData[]
@@ -128,7 +140,10 @@ export const PlayScreen = () => {
                 <View style={styles.headerContainer}>
                     <Pressable 
                         onPress={() => navigation.goBack()} 
-                        onPressIn={() => topBackPressY.value = withSpring(4, { damping: 12, stiffness: 200 })}
+                        onPressIn={() => {
+                            playPop();
+                            topBackPressY.value = withSpring(4, { damping: 12, stiffness: 200 })
+                        }}
                         onPressOut={() => topBackPressY.value = withSpring(0, { damping: 12, stiffness: 200 })}
                         style={{ position: 'absolute', left: 20, top: 16, width: 48, height: 48, zIndex: 10 }}
                     >

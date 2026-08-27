@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, Pressable } from 'react-native'
+import { View, Text, StyleSheet, Pressable, Image } from 'react-native'
 import React from 'react'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Canvas, Group, RoundedRect } from '@shopify/react-native-skia'
@@ -6,7 +6,18 @@ import Animated, { ZoomIn, FadeInDown, useSharedValue, useDerivedValue, withSpri
 import { useNavigation } from '@react-navigation/native'
 
 import { useLevelStore } from '../store/useLevelStore'
+import Sound from 'react-native-sound'
 
+Sound.setCategory('Playback')
+const popSound = new Sound(Image.resolveAssetSource(require('../assets/sounds/pop.mp3'))?.uri ?? '', '', (error) => {
+    if (error) console.log('failed to load pop sound', error);
+});
+
+const playPop = () => {
+    popSound?.stop(() => {
+        popSound?.play();
+    });
+};
 export const StartScreen = () => {
     const navigation = useNavigation<any>()
     const { currentLevelId, resetProgress } = useLevelStore()
@@ -43,7 +54,10 @@ export const StartScreen = () => {
                         <Animated.View entering={FadeInDown.duration(600).delay(300).springify()}>
                             <Pressable 
                                 onPress={() => navigation.navigate('Play')}
-                                onPressIn={() => playPressY.value = withSpring(8, { damping: 14, stiffness: 200 })}
+                                onPressIn={() => {
+                                    playPop();
+                                    playPressY.value = withSpring(8, { damping: 14, stiffness: 200 })
+                                }}
                                 onPressOut={() => playPressY.value = withSpring(0, { damping: 14, stiffness: 200 })}
                                 style={styles.mainButton}
                             >
@@ -66,7 +80,10 @@ export const StartScreen = () => {
                         <Animated.View entering={FadeInDown.duration(600).delay(450).springify()}>
                             <Pressable 
                                 onPress={() => resetProgress()}
-                                onPressIn={() => resetPressY.value = withSpring(6, { damping: 14, stiffness: 200 })}
+                                onPressIn={() => {
+                                    playPop();
+                                    resetPressY.value = withSpring(6, { damping: 14, stiffness: 200 })
+                                }}
                                 onPressOut={() => resetPressY.value = withSpring(0, { damping: 14, stiffness: 200 })}
                                 style={styles.secondaryButton}
                             >
