@@ -1,4 +1,4 @@
-import { View, Text, useWindowDimensions, StyleSheet } from 'react-native'
+import { View, Text, useWindowDimensions, StyleSheet, Image } from 'react-native'
 import React, { useCallback, useMemo, useState, useEffect } from 'react'
 import { Canvas, Group, Path, RoundedRect, Skia, Image as SkImage, Shadow, Rect, LinearGradient, vec, Mask, CornerPathEffect, PathOp } from '@shopify/react-native-skia'
 import { useDerivedValue, useSharedValue, withTiming, withDelay, useAnimatedReaction, withSpring } from 'react-native-reanimated'
@@ -6,6 +6,40 @@ import { GestureDetector, usePanGesture, Pressable } from 'react-native-gesture-
 import { scheduleOnRN } from 'react-native-worklets'
 import type { SharedValue } from 'react-native-reanimated'
 import type { SkImage as SkImageType } from '@shopify/react-native-skia'
+import Sound from 'react-native-sound'
+
+// ── Audio Globals ──────────────────────────────────────────────────
+Sound.setCategory('Playback')
+
+const whooshSound = new Sound(Image.resolveAssetSource(require('../assets/sounds/whoosh.mp3'))?.uri ?? '', '', (error) => {
+    if (error) console.log('failed to load whoosh sound', error);
+});
+
+const popSound = new Sound(Image.resolveAssetSource(require('../assets/sounds/pop.mp3'))?.uri ?? '', '', (error) => {
+    if (error) console.log('failed to load pop sound', error);
+});
+
+const correctSound = new Sound(Image.resolveAssetSource(require('../assets/sounds/correct.mp3'))?.uri ?? '', '', (error) => {
+    if (error) console.log('failed to load correct sound', error);
+});
+
+const playWhoosh = () => {
+    whooshSound?.stop(() => {
+        whooshSound?.play();
+    });
+};
+
+const playPop = () => {
+    popSound?.stop(() => {
+        popSound?.play();
+    });
+};
+
+const playCorrect = () => {
+    correctSound?.stop(() => {
+        correctSound?.play();
+    });
+};
 
 // ── Types ─────────────────────────────────────────────────────────
 export interface Cell { x: number; y: number }
@@ -39,7 +73,8 @@ function usePieceState(
     initialX: number,
     initialY: number,
     isPuzzleCompleted: SharedValue<boolean>,
-    index: number
+    index: number,
+    isActive: boolean
 ) {
     const posX = useSharedValue(initialX)
     const posY = useSharedValue(initialY)
@@ -54,6 +89,7 @@ function usePieceState(
         setIsLanded(false);
         const timeout = setTimeout(() => {
             entranceY.value = withSpring(0, { damping: 14, stiffness: 80, mass: 1 })
+            if (isActive) playWhoosh()
             setTimeout(() => {
                 isLandedSV.value = true;
                 setIsLanded(true);
@@ -182,46 +218,46 @@ export const PuzzleBoard = ({ levelData, image, onPuzzleSolved }: PuzzleBoardPro
 
         // We must call the exact same number of hooks every render. 40 is our max pieces bound.
     const allStates = [
-        usePieceState(getInitialX(0), getInitialY(0), isPuzzleCompleted, 0),
-        usePieceState(getInitialX(1), getInitialY(1), isPuzzleCompleted, 1),
-        usePieceState(getInitialX(2), getInitialY(2), isPuzzleCompleted, 2),
-        usePieceState(getInitialX(3), getInitialY(3), isPuzzleCompleted, 3),
-        usePieceState(getInitialX(4), getInitialY(4), isPuzzleCompleted, 4),
-        usePieceState(getInitialX(5), getInitialY(5), isPuzzleCompleted, 5),
-        usePieceState(getInitialX(6), getInitialY(6), isPuzzleCompleted, 6),
-        usePieceState(getInitialX(7), getInitialY(7), isPuzzleCompleted, 7),
-        usePieceState(getInitialX(8), getInitialY(8), isPuzzleCompleted, 8),
-        usePieceState(getInitialX(9), getInitialY(9), isPuzzleCompleted, 9),
-        usePieceState(getInitialX(10), getInitialY(10), isPuzzleCompleted, 10),
-        usePieceState(getInitialX(11), getInitialY(11), isPuzzleCompleted, 11),
-        usePieceState(getInitialX(12), getInitialY(12), isPuzzleCompleted, 12),
-        usePieceState(getInitialX(13), getInitialY(13), isPuzzleCompleted, 13),
-        usePieceState(getInitialX(14), getInitialY(14), isPuzzleCompleted, 14),
-        usePieceState(getInitialX(15), getInitialY(15), isPuzzleCompleted, 15),
-        usePieceState(getInitialX(16), getInitialY(16), isPuzzleCompleted, 16),
-        usePieceState(getInitialX(17), getInitialY(17), isPuzzleCompleted, 17),
-        usePieceState(getInitialX(18), getInitialY(18), isPuzzleCompleted, 18),
-        usePieceState(getInitialX(19), getInitialY(19), isPuzzleCompleted, 19),
-        usePieceState(getInitialX(20), getInitialY(20), isPuzzleCompleted, 20),
-        usePieceState(getInitialX(21), getInitialY(21), isPuzzleCompleted, 21),
-        usePieceState(getInitialX(22), getInitialY(22), isPuzzleCompleted, 22),
-        usePieceState(getInitialX(23), getInitialY(23), isPuzzleCompleted, 23),
-        usePieceState(getInitialX(24), getInitialY(24), isPuzzleCompleted, 24),
-        usePieceState(getInitialX(25), getInitialY(25), isPuzzleCompleted, 25),
-        usePieceState(getInitialX(26), getInitialY(26), isPuzzleCompleted, 26),
-        usePieceState(getInitialX(27), getInitialY(27), isPuzzleCompleted, 27),
-        usePieceState(getInitialX(28), getInitialY(28), isPuzzleCompleted, 28),
-        usePieceState(getInitialX(29), getInitialY(29), isPuzzleCompleted, 29),
-        usePieceState(getInitialX(30), getInitialY(30), isPuzzleCompleted, 30),
-        usePieceState(getInitialX(31), getInitialY(31), isPuzzleCompleted, 31),
-        usePieceState(getInitialX(32), getInitialY(32), isPuzzleCompleted, 32),
-        usePieceState(getInitialX(33), getInitialY(33), isPuzzleCompleted, 33),
-        usePieceState(getInitialX(34), getInitialY(34), isPuzzleCompleted, 34),
-        usePieceState(getInitialX(35), getInitialY(35), isPuzzleCompleted, 35),
-        usePieceState(getInitialX(36), getInitialY(36), isPuzzleCompleted, 36),
-        usePieceState(getInitialX(37), getInitialY(37), isPuzzleCompleted, 37),
-        usePieceState(getInitialX(38), getInitialY(38), isPuzzleCompleted, 38),
-        usePieceState(getInitialX(39), getInitialY(39), isPuzzleCompleted, 39),
+        usePieceState(getInitialX(0), getInitialY(0), isPuzzleCompleted, 0, 0 < PIECES.length),
+        usePieceState(getInitialX(1), getInitialY(1), isPuzzleCompleted, 1, 1 < PIECES.length),
+        usePieceState(getInitialX(2), getInitialY(2), isPuzzleCompleted, 2, 2 < PIECES.length),
+        usePieceState(getInitialX(3), getInitialY(3), isPuzzleCompleted, 3, 3 < PIECES.length),
+        usePieceState(getInitialX(4), getInitialY(4), isPuzzleCompleted, 4, 4 < PIECES.length),
+        usePieceState(getInitialX(5), getInitialY(5), isPuzzleCompleted, 5, 5 < PIECES.length),
+        usePieceState(getInitialX(6), getInitialY(6), isPuzzleCompleted, 6, 6 < PIECES.length),
+        usePieceState(getInitialX(7), getInitialY(7), isPuzzleCompleted, 7, 7 < PIECES.length),
+        usePieceState(getInitialX(8), getInitialY(8), isPuzzleCompleted, 8, 8 < PIECES.length),
+        usePieceState(getInitialX(9), getInitialY(9), isPuzzleCompleted, 9, 9 < PIECES.length),
+        usePieceState(getInitialX(10), getInitialY(10), isPuzzleCompleted, 10, 10 < PIECES.length),
+        usePieceState(getInitialX(11), getInitialY(11), isPuzzleCompleted, 11, 11 < PIECES.length),
+        usePieceState(getInitialX(12), getInitialY(12), isPuzzleCompleted, 12, 12 < PIECES.length),
+        usePieceState(getInitialX(13), getInitialY(13), isPuzzleCompleted, 13, 13 < PIECES.length),
+        usePieceState(getInitialX(14), getInitialY(14), isPuzzleCompleted, 14, 14 < PIECES.length),
+        usePieceState(getInitialX(15), getInitialY(15), isPuzzleCompleted, 15, 15 < PIECES.length),
+        usePieceState(getInitialX(16), getInitialY(16), isPuzzleCompleted, 16, 16 < PIECES.length),
+        usePieceState(getInitialX(17), getInitialY(17), isPuzzleCompleted, 17, 17 < PIECES.length),
+        usePieceState(getInitialX(18), getInitialY(18), isPuzzleCompleted, 18, 18 < PIECES.length),
+        usePieceState(getInitialX(19), getInitialY(19), isPuzzleCompleted, 19, 19 < PIECES.length),
+        usePieceState(getInitialX(20), getInitialY(20), isPuzzleCompleted, 20, 20 < PIECES.length),
+        usePieceState(getInitialX(21), getInitialY(21), isPuzzleCompleted, 21, 21 < PIECES.length),
+        usePieceState(getInitialX(22), getInitialY(22), isPuzzleCompleted, 22, 22 < PIECES.length),
+        usePieceState(getInitialX(23), getInitialY(23), isPuzzleCompleted, 23, 23 < PIECES.length),
+        usePieceState(getInitialX(24), getInitialY(24), isPuzzleCompleted, 24, 24 < PIECES.length),
+        usePieceState(getInitialX(25), getInitialY(25), isPuzzleCompleted, 25, 25 < PIECES.length),
+        usePieceState(getInitialX(26), getInitialY(26), isPuzzleCompleted, 26, 26 < PIECES.length),
+        usePieceState(getInitialX(27), getInitialY(27), isPuzzleCompleted, 27, 27 < PIECES.length),
+        usePieceState(getInitialX(28), getInitialY(28), isPuzzleCompleted, 28, 28 < PIECES.length),
+        usePieceState(getInitialX(29), getInitialY(29), isPuzzleCompleted, 29, 29 < PIECES.length),
+        usePieceState(getInitialX(30), getInitialY(30), isPuzzleCompleted, 30, 30 < PIECES.length),
+        usePieceState(getInitialX(31), getInitialY(31), isPuzzleCompleted, 31, 31 < PIECES.length),
+        usePieceState(getInitialX(32), getInitialY(32), isPuzzleCompleted, 32, 32 < PIECES.length),
+        usePieceState(getInitialX(33), getInitialY(33), isPuzzleCompleted, 33, 33 < PIECES.length),
+        usePieceState(getInitialX(34), getInitialY(34), isPuzzleCompleted, 34, 34 < PIECES.length),
+        usePieceState(getInitialX(35), getInitialY(35), isPuzzleCompleted, 35, 35 < PIECES.length),
+        usePieceState(getInitialX(36), getInitialY(36), isPuzzleCompleted, 36, 36 < PIECES.length),
+        usePieceState(getInitialX(37), getInitialY(37), isPuzzleCompleted, 37, 37 < PIECES.length),
+        usePieceState(getInitialX(38), getInitialY(38), isPuzzleCompleted, 38, 38 < PIECES.length),
+        usePieceState(getInitialX(39), getInitialY(39), isPuzzleCompleted, 39, 39 < PIECES.length),
     ]
 
     const pieceStates = useMemo(() => allStates.slice(0, PIECES.length), [PIECES.length])
@@ -374,6 +410,7 @@ export const PuzzleBoard = ({ levelData, image, onPuzzleSolved }: PuzzleBoardPro
                     activePieceIndex.value = i
                     start.value = { x: px, y: py }
                     scheduleOnRN(bringToFront, i)
+                    scheduleOnRN(playPop)
                     return
                 }
             }
@@ -427,6 +464,7 @@ export const PuzzleBoard = ({ levelData, image, onPuzzleSolved }: PuzzleBoardPro
                     if (isComplete) {
                         isPuzzleCompleted.value = true
                         scheduleOnRN(handlePuzzleSolved)
+                        scheduleOnRN(playCorrect)
                     }
                 })
             } else {
