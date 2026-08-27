@@ -2,7 +2,6 @@ import { View, Text, useWindowDimensions, StyleSheet } from 'react-native'
 import React, { useCallback, useMemo, useState, useEffect } from 'react'
 import { Canvas, Group, Path, RoundedRect, Skia, Image as SkImage, Shadow, Rect, LinearGradient, vec, Mask, CornerPathEffect, PathOp } from '@shopify/react-native-skia'
 import { useDerivedValue, useSharedValue, withTiming, withDelay, useAnimatedReaction, withSpring } from 'react-native-reanimated'
-import Animated, { FadeIn, ZoomInUp } from 'react-native-reanimated'
 import { GestureDetector, usePanGesture, Pressable } from 'react-native-gesture-handler'
 import { scheduleOnRN } from 'react-native-worklets'
 import type { SharedValue } from 'react-native-reanimated'
@@ -46,20 +45,29 @@ function usePieceState(
     const posY = useSharedValue(initialY)
     const entranceY = useSharedValue(-1200)
 
+    const [isLanded, setIsLanded] = useState(false)
+    const isLandedSV = useSharedValue(false)
+
     useEffect(() => {
         entranceY.value = -1200;
+        isLandedSV.value = false;
+        setIsLanded(false);
         const timeout = setTimeout(() => {
             entranceY.value = withSpring(0, { damping: 14, stiffness: 80, mass: 1 })
+            setTimeout(() => {
+                isLandedSV.value = true;
+                setIsLanded(true);
+            }, 1000)
         }, 1200 + index * 180)
         return () => clearTimeout(timeout)
-    }, [index, entranceY])
+    }, [index, entranceY, isLandedSV])
 
     const transform = useDerivedValue(() => [
         { translateX: posX.value },
         { translateY: posY.value + entranceY.value },
     ])
 
-    return { posX, posY, transform }
+    return { posX, posY, entranceY, transform, isLanded, isLandedSV }
 }
 
 export const PuzzleBoard = ({ levelData, image, onPuzzleSolved }: PuzzleBoardProps) => {
@@ -248,12 +256,16 @@ export const PuzzleBoard = ({ levelData, image, onPuzzleSolved }: PuzzleBoardPro
         return PIECES.map((piece) => {
             const path = Skia.Path.Make()
             for (const cell of piece.cells) {
-                path.addRect(
-                    Skia.XYWHRect(
-                        cell.x * STEP - GAP / 2 - 0.5,
-                        cell.y * STEP - GAP / 2 - 0.5,
-                        STEP + 1,
-                        STEP + 1
+                path.addRRect(
+                    Skia.RRectXY(
+                        Skia.XYWHRect(
+                            cell.x * STEP - GAP / 2 - 0.5,
+                            cell.y * STEP - GAP / 2 - 0.5,
+                            STEP + 1,
+                            STEP + 1
+                        ),
+                        1,
+                        1
                     )
                 )
             }
@@ -267,22 +279,35 @@ export const PuzzleBoard = ({ levelData, image, onPuzzleSolved }: PuzzleBoardPro
         let first = true;
         for (let i = 0; i < PIECES.length; i++) {
             if (i === activePieceIndex.value) continue;
+            if (!pieceStates[i].isLandedSV.value) continue;
             
-            const px = pieceStates[i].posX.value;
-            const py = pieceStates[i].posY.value;
+            const gridX = Math.round(pieceStates[i].posX.value / STEP);
+            const gridY = Math.round(pieceStates[i].posY.value / STEP);
 
-            const p = Skia.Path.Make();
-            p.addPath(piecePaths[i]);
-            
-            const m = Skia.Matrix();
-            m.translate(px, py);
-            p.transform(m);
-            
-            if (first) {
-                union.addPath(p);
-                first = false;
-            } else {
-                union.op(p, PathOp.Union);
+            for (const cell of PIECES[i].cells) {
+                const absX = gridX + cell.x;
+                const absY = gridY + cell.y;
+                
+                const cellP = Skia.Path.Make();
+                cellP.addRRect(
+                    Skia.RRectXY(
+                        Skia.XYWHRect(
+                            absX * STEP - GAP / 2 - 0.5,
+                            absY * STEP - GAP / 2 - 0.5,
+                            STEP + 1,
+                            STEP + 1
+                        ),
+                        1,
+                        1
+                    )
+                );
+
+                if (first) {
+                    union.addPath(cellP);
+                    first = false;
+                } else {
+                    union.op(cellP, PathOp.Union);
+                }
             }
         }
         return union;
@@ -390,6 +415,9 @@ export const PuzzleBoard = ({ levelData, image, onPuzzleSolved }: PuzzleBoardPro
     })
 
     const basePieces = Array.from({ length: PIECES.length }, (_, i) => i).filter(i => i !== frontPiece)
+    const snappedPieces = basePieces.filter(i => pieceStates[i].isLanded)
+    const floatingPieces = basePieces.filter(i => !pieceStates[i].isLanded)
+    if (frontPiece !== -1) floatingPieces.push(frontPiece)
 
     return (
         <View style={styles.boardContainer}>
@@ -412,97 +440,69 @@ export const PuzzleBoard = ({ levelData, image, onPuzzleSolved }: PuzzleBoardPro
                         )}
                     </Group>
 
-                    <Mask
-                            mask={
-                                <Path path={basePiecesUnion} color="white">
-                                    <CornerPathEffect r={6} />
-                                </Path>
-                            }
-                        >
-                            <Group>
-                                {basePieces.map((i) => (
-                                    <Group key={`drop-shadow-${PIECES[i].id}`} transform={pieceStates[i].transform}>
-                                        <Path
-                                            path={piecePaths[i]}
-                                            color="rgba(0,0,0,0.15)"
-                                            transform={[{ translateY: 10 }]}
-                                        >
-                                            
-                                        </Path>
-                                    </Group>
-                                ))}
-                                {basePieces.map((i) => (
-                                    <Group key={`edge-${PIECES[i].id}`} transform={pieceStates[i].transform}>
-                                        <Path
-                                            path={piecePaths[i]}
-                                            color="#3d2a1d"
-                                            transform={[{ translateY: 5 }]}
-                                        >
-                                            
-                                        </Path>
-                                    </Group>
-                                ))}
-                                {basePieces.map((i) => (
-                                    <Group key={`image-${PIECES[i].id}`} transform={pieceStates[i].transform}>
-                                        <Mask
-                                            mask={
-                                                <Path path={piecePaths[i]} color="white">
-                                                    
-                                                </Path>
-                                            }
-                                        >
-                                            {image && (
-                                                <SkImage
-                                                    image={image}
-                                                    x={-PIECES[i].target.x * STEP - GAP / 2}
-                                                    y={-PIECES[i].target.y * STEP - GAP / 2}
-                                                    width={levelData.puzzle_size.cols * STEP}
-                                                    height={levelData.puzzle_size.rows * STEP}
-                                                    fit="fill"
-                                                />
-                                            )}
-                                        </Mask>
-                                    </Group>
-                                ))}
-                            </Group>
-                        </Mask>
+                    <Mask mask={<Path path={basePiecesUnion} color="white" transform={[{ translateY: 10 }]}><CornerPathEffect r={6} /></Path>}>
+                        <Group>
+                            {snappedPieces.map((i) => (
+                                <Group key={`drop-shadow-${PIECES[i].id}`} transform={pieceStates[i].transform}>
+                                    <Path path={piecePaths[i]} color="rgba(0,0,0,0.15)" transform={[{ translateY: 10 }]} />
+                                </Group>
+                            ))}
+                        </Group>
+                    </Mask>
 
-                        {frontPiece !== -1 && (
-                            <Group transform={pieceStates[frontPiece].transform}>
-                                <Path
-                                    path={piecePaths[frontPiece]}
-                                    color="rgba(0,0,0,0.2)"
-                                    transform={[{ translateY: 14 }]}
-                                >
-                                    <CornerPathEffect r={6} />
-                                </Path>
-                                <Path
-                                    path={piecePaths[frontPiece]}
-                                    color="#3d2a1d"
-                                    transform={[{ translateY: 8 }]}
-                                >
-                                    <CornerPathEffect r={6} />
-                                </Path>
-                                <Mask
-                                    mask={
-                                        <Path path={piecePaths[frontPiece]} color="white">
-                                            <CornerPathEffect r={6} />
-                                        </Path>
-                                    }
-                                >
-                                    {image && (
-                                        <SkImage
-                                            image={image}
-                                            x={-PIECES[frontPiece].target.x * STEP - GAP / 2}
-                                            y={-PIECES[frontPiece].target.y * STEP - GAP / 2}
-                                            width={levelData.puzzle_size.cols * STEP}
-                                            height={levelData.puzzle_size.rows * STEP}
-                                            fit="fill"
-                                        />
-                                    )}
-                                </Mask>
-                            </Group>
-                        )}
+                    <Mask mask={<Path path={basePiecesUnion} color="white" transform={[{ translateY: 5 }]}><CornerPathEffect r={6} /></Path>}>
+                        <Group>
+                            {snappedPieces.map((i) => (
+                                <Group key={`edge-${PIECES[i].id}`} transform={pieceStates[i].transform}>
+                                    <Path path={piecePaths[i]} color="#3d2a1d" transform={[{ translateY: 5 }]} />
+                                </Group>
+                            ))}
+                        </Group>
+                    </Mask>
+
+                    <Mask mask={<Path path={basePiecesUnion} color="white"><CornerPathEffect r={6} /></Path>}>
+                        <Group>
+                            {snappedPieces.map((i) => (
+                                <Group key={`image-${PIECES[i].id}`} transform={pieceStates[i].transform}>
+                                    <Mask mask={<Path path={piecePaths[i]} color="white" />}>
+                                        {image && (
+                                            <SkImage
+                                                image={image}
+                                                x={-PIECES[i].target.x * STEP - GAP / 2}
+                                                y={-PIECES[i].target.y * STEP - GAP / 2}
+                                                width={levelData.puzzle_size.cols * STEP}
+                                                height={levelData.puzzle_size.rows * STEP}
+                                                fit="fill"
+                                            />
+                                        )}
+                                    </Mask>
+                                </Group>
+                            ))}
+                        </Group>
+                    </Mask>
+
+                    {floatingPieces.map(i => (
+                        <Group key={`floating-${PIECES[i].id}`} transform={pieceStates[i].transform}>
+                            <Path path={piecePaths[i]} color="rgba(0,0,0,0.2)" transform={[{ translateY: i === frontPiece ? 14 : 10 }]}>
+                                <CornerPathEffect r={6} />
+                            </Path>
+                            <Path path={piecePaths[i]} color="#3d2a1d" transform={[{ translateY: i === frontPiece ? 8 : 5 }]}>
+                                <CornerPathEffect r={6} />
+                            </Path>
+                            <Mask mask={<Path path={piecePaths[i]} color="white"><CornerPathEffect r={6} /></Path>}>
+                                {image && (
+                                    <SkImage
+                                        image={image}
+                                        x={-PIECES[i].target.x * STEP - GAP / 2}
+                                        y={-PIECES[i].target.y * STEP - GAP / 2}
+                                        width={levelData.puzzle_size.cols * STEP}
+                                        height={levelData.puzzle_size.rows * STEP}
+                                        fit="fill"
+                                    />
+                                )}
+                            </Mask>
+                        </Group>
+                    ))}
 
                     <Group transform={puzzleTransform} opacity={completedOpacity}>
                         <Group clip={Skia.RRectXY(Skia.XYWHRect(-GAP / 2, -GAP / 2, levelData.puzzle_size.cols * STEP, levelData.puzzle_size.rows * STEP), 12, 12)} blendMode="screen">
