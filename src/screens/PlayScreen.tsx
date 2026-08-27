@@ -2,7 +2,7 @@ import { View, Text, StyleSheet, Pressable } from 'react-native'
 import React, { useCallback, useState, useEffect } from 'react'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Canvas, Group, Path, RoundedRect, Skia, useImage } from '@shopify/react-native-skia'
-import Animated, { FadeIn, ZoomInUp } from 'react-native-reanimated'
+import Animated, { FadeIn, ZoomInUp, useSharedValue, useDerivedValue, withSpring } from 'react-native-reanimated'
 
 import { useLevelStore } from '../store/useLevelStore'
 import { PuzzleBoard, LevelData } from '../components/PuzzleBoard'
@@ -45,6 +45,13 @@ export const PlayScreen = () => {
     const [isSolved, setIsSolved] = useState(false)
     const [showOverlay, setShowOverlay] = useState(false)
     const [resetKey, setResetKey] = useState(0) // Forces a full remount on "reset"
+    
+    // ── Button Animation ──────────────────────────────────────────
+    const buttonPressY = useSharedValue(0)
+    const buttonTransform = useDerivedValue(() => [{ translateY: buttonPressY.value }])
+
+    const topResetPressY = useSharedValue(0)
+    const topResetTransform = useDerivedValue(() => [{ translateY: topResetPressY.value }])
 
     // Reset timer state when a new level mounts or user taps "Reset"
     useEffect(() => {
@@ -118,16 +125,23 @@ export const PlayScreen = () => {
                             <Text style={{ fontSize: 20, fontWeight: '900', color: '#5a4230' }}>{timeString}</Text>
                         </View>
                     </View>
-                    <Pressable onPress={handleResetLevel} style={{ position: 'absolute', right: 20, top: 16, width: 48, height: 48 }}>
+                    <Pressable 
+                        onPress={handleResetLevel} 
+                        onPressIn={() => topResetPressY.value = withSpring(4, { damping: 12, stiffness: 200 })}
+                        onPressOut={() => topResetPressY.value = withSpring(0, { damping: 12, stiffness: 200 })}
+                        style={{ position: 'absolute', right: 20, top: 16, width: 48, height: 48 }}
+                    >
                         <Canvas style={{ flex: 1 }}>
                             <RoundedRect x={0} y={6} width={48} height={42} r={12} color="rgba(0,0,0,0.15)" />
                             <RoundedRect x={0} y={4} width={48} height={40} r={12} color="#d8cfb8" />
-                            <RoundedRect x={0} y={0} width={48} height={40} r={12} color="#f8f4e6" />
-                            {resetIconPath && (
-                                <Group transform={[{ translateX: 10.5 }, { translateY: 6.5 }, { scale: 1.15 }]}>
-                                    <Path path={resetIconPath} color="#5a4230" />
-                                </Group>
-                            )}
+                            <Group transform={topResetTransform}>
+                                <RoundedRect x={0} y={0} width={48} height={40} r={12} color="#f8f4e6" />
+                                {resetIconPath && (
+                                    <Group transform={[{ translateX: 10.5 }, { translateY: 6.5 }, { scale: 1.15 }]}>
+                                        <Path path={resetIconPath} color="#5a4230" />
+                                    </Group>
+                                )}
+                            </Group>
                         </Canvas>
                     </Pressable>
                 </View>
@@ -161,16 +175,23 @@ export const PlayScreen = () => {
                         </Animated.Text>
                         
                         <Animated.View entering={ZoomInUp.duration(500).delay(200)}>
-                            <Pressable onPress={handleLevelComplete} style={{ width: 120, height: 60, marginTop: 32 }}>
+                            <Pressable 
+                                onPress={handleLevelComplete} 
+                                onPressIn={() => buttonPressY.value = withSpring(6, { damping: 12, stiffness: 200 })}
+                                onPressOut={() => buttonPressY.value = withSpring(0, { damping: 12, stiffness: 200 })}
+                                style={{ width: 120, height: 60, marginTop: 32 }}
+                            >
                                 <Canvas style={{ flex: 1 }}>
                                     <RoundedRect x={0} y={10} width={120} height={50} r={16} color="rgba(0,0,0,0.15)" />
                                     <RoundedRect x={0} y={6} width={120} height={48} r={16} color="#3d2a1d" />
-                                    <RoundedRect x={0} y={0} width={120} height={48} r={16} color="#5a4230" />
-                                    {nextIconPath && (
-                                        <Group transform={[{ translateX: isFinalLevel ? 44 : 42 }, { translateY: isFinalLevel ? 8 : 6 }, { scale: isFinalLevel ? 1.2 : 1.5 }]}>
-                                            <Path path={isFinalLevel ? resetIconPath : nextIconPath} color="white" />
-                                        </Group>
-                                    )}
+                                    <Group transform={buttonTransform}>
+                                        <RoundedRect x={0} y={0} width={120} height={48} r={16} color="#5a4230" />
+                                        {nextIconPath && (
+                                            <Group transform={[{ translateX: isFinalLevel ? 44 : 42 }, { translateY: isFinalLevel ? 8 : 6 }, { scale: isFinalLevel ? 1.2 : 1.5 }]}>
+                                                <Path path={isFinalLevel ? resetIconPath : nextIconPath} color="white" />
+                                            </Group>
+                                        )}
+                                    </Group>
                                 </Canvas>
                             </Pressable>
                         </Animated.View>
