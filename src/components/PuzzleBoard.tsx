@@ -1,7 +1,7 @@
 import { View, Text, useWindowDimensions, StyleSheet, Image } from 'react-native'
 import React, { useCallback, useMemo, useState, useEffect } from 'react'
 import { Canvas, Group, Path, RoundedRect, Skia, Image as SkImage, Shadow, Rect, LinearGradient, vec, Mask, CornerPathEffect, PathOp } from '@shopify/react-native-skia'
-import { useDerivedValue, useSharedValue, withTiming, withDelay, useAnimatedReaction, withSpring } from 'react-native-reanimated'
+import { useDerivedValue, useSharedValue, withTiming, withDelay, useAnimatedReaction, withSpring, interpolateColor } from 'react-native-reanimated'
 import { GestureDetector, usePanGesture, Pressable } from 'react-native-gesture-handler'
 import { scheduleOnRN } from 'react-native-worklets'
 import type { SharedValue } from 'react-native-reanimated'
@@ -62,6 +62,7 @@ export interface PuzzleBoardProps {
     levelData: LevelData;
     image: SkImageType | null;
     onPuzzleSolved: () => void;
+    timeShared?: SharedValue<number>;
 }
 
 // ── Constants ─────────────────────────────────────────────────────
@@ -106,12 +107,21 @@ function usePieceState(
     return { posX, posY, entranceY, transform, isLanded, isLandedSV }
 }
 
-export const PuzzleBoard = ({ levelData, image, onPuzzleSolved }: PuzzleBoardProps) => {
+export const PuzzleBoard = ({ levelData, image, onPuzzleSolved, timeShared }: PuzzleBoardProps) => {
     const { width } = useWindowDimensions()
 
     const COLS = levelData.board_size.cols
     const ROWS = levelData.board_size.rows
     const PIECES = levelData.pieces
+
+    const cellColor = useDerivedValue(() => {
+        if (!timeShared) return '#f0cca3';
+        return interpolateColor(
+            timeShared.value,
+            [0, 300],
+            ['#8a3b30', '#f0cca3']
+        );
+    });
 
     // ── Board dimensions ──────────────────────────────────────────
     const boardSize = width * 0.9
@@ -485,7 +495,7 @@ export const PuzzleBoard = ({ levelData, image, onPuzzleSolved }: PuzzleBoardPro
                 <GestureDetector gesture={panGesture}>
                     <Canvas style={{ width: boardSize + BLEED * 2, height: boardSize + BLEED * 2, position: 'absolute', left: -BLEED, top: -BLEED }}>
                         <Group transform={[{ translateX: BLEED }, { translateY: BLEED }]}>
-                            <Group color="#f0cca3">
+                            <Group color={cellColor}>
                         {Array.from({ length: ROWS }, (_, row) =>
                             Array.from({ length: COLS }, (_, col) => (
                                 <RoundedRect

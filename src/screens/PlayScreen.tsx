@@ -2,7 +2,7 @@ import { View, Text, StyleSheet, Pressable, Image } from 'react-native'
 import React, { useCallback, useState, useEffect } from 'react'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Canvas, Group, Path, RoundedRect, Skia, useImage } from '@shopify/react-native-skia'
-import Animated, { FadeIn, ZoomInUp, useSharedValue, useDerivedValue, withSpring } from 'react-native-reanimated'
+import Animated, { FadeIn, ZoomInUp, FadeInDown, useSharedValue, useDerivedValue, withSpring, interpolateColor, withTiming, useAnimatedStyle } from 'react-native-reanimated'
 import { useNavigation } from '@react-navigation/native'
 
 import { useLevelStore } from '../store/useLevelStore'
@@ -65,6 +65,7 @@ export const PlayScreen = () => {
     const [timeLeft, setTimeLeft] = useState(300) // 5:00 minutes
     const [isSolved, setIsSolved] = useState(false)
     const [showOverlay, setShowOverlay] = useState(false)
+    const [isGameOver, setIsGameOver] = useState(false)
     const [resetKey, setResetKey] = useState(0) // Forces a full remount on "reset"
     
     // ── Button Animation ──────────────────────────────────────────
@@ -82,6 +83,7 @@ export const PlayScreen = () => {
         setTimeLeft(300)
         setIsSolved(false)
         setShowOverlay(false)
+        setIsGameOver(false)
         
         // Auto-correct invalid level states (e.g., if user was on level 15 before we clamped it)
         if (currentLevelId > levelsData.length) {
@@ -98,6 +100,29 @@ export const PlayScreen = () => {
         }, 1000)
         return () => clearInterval(interval)
     }, [isSolved])
+
+    const timeShared = useSharedValue(timeLeft)
+    useEffect(() => {
+        timeShared.value = withTiming(timeLeft, { duration: 1000 })
+    }, [timeLeft])
+
+    const animatedBgStyle = useAnimatedStyle(() => {
+        const bg = interpolateColor(
+            timeShared.value,
+            [0, 300],
+            ['#7a3229', '#e4dccf']
+        )
+        return { backgroundColor: bg }
+    })
+
+    useEffect(() => {
+        if (timeLeft === 0 && !isSolved && !isGameOver) {
+            setIsGameOver(true)
+            setTimeout(() => {
+                navigation.navigate('Start')
+            }, 2500)
+        }
+    }, [timeLeft, isSolved, isGameOver, navigation])
 
     const mins = Math.floor(timeLeft / 60)
     const secs = (timeLeft % 60).toString().padStart(2, '0')
@@ -134,7 +159,7 @@ export const PlayScreen = () => {
     }
 
     return (
-        <View style={{ flex: 1, backgroundColor: '#e4dccf' }}>
+        <Animated.View style={[{ flex: 1 }, animatedBgStyle]}>
             <SafeAreaView style={{ flex: 1 }}>
                 {/* ── UI Header ── */}
                 <View style={styles.headerContainer}>
@@ -173,7 +198,10 @@ export const PlayScreen = () => {
                     </View>
                     <Pressable 
                         onPress={handleResetLevel} 
-                        onPressIn={() => topResetPressY.value = withSpring(4, { damping: 12, stiffness: 200 })}
+                        onPressIn={() => {
+                            playPop();
+                            topResetPressY.value = withSpring(4, { damping: 12, stiffness: 200 })
+                        }}
                         onPressOut={() => topResetPressY.value = withSpring(0, { damping: 12, stiffness: 200 })}
                         style={{ position: 'absolute', right: 20, top: 16, width: 48, height: 48 }}
                     >
@@ -199,6 +227,7 @@ export const PlayScreen = () => {
                     levelData={levelData}
                     image={image}
                     onPuzzleSolved={handlePuzzleSolved}
+                    timeShared={timeShared}
                 />
 
                 {/* ── UI Footer ── */}
@@ -244,7 +273,21 @@ export const PlayScreen = () => {
                     </View>
                 </Animated.View>
             )}
-        </View>
+
+            {/* ── Full Screen Game Over Overlay ── */}
+            {isGameOver && (
+                <Animated.View style={styles.completionOverlay} entering={FadeIn.duration(400)}>
+                    <View style={{ alignItems: 'center' }}>
+                        <Animated.Text 
+                            entering={FadeInDown.duration(600).springify().damping(12).stiffness(150)} 
+                            style={styles.completionText}
+                        >
+                            GAME OVER
+                        </Animated.Text>
+                    </View>
+                </Animated.View>
+            )}
+        </Animated.View>
     )
 }
 
