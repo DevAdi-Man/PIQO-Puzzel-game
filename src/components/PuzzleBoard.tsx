@@ -170,9 +170,10 @@ export const PuzzleBoard = ({ levelData, image, onPuzzleSolved, timeShared }: Pu
             return x - Math.floor(x);
         };
 
-        const placedBoxes: {x: number, y: number, w: number, h: number}[] = [];
+        const occupied: boolean[][] = Array.from({ length: ROWS }, () => Array(COLS).fill(false));
 
         for (let i = 0; i < N; i++) {
+            const cells = PIECES[i].cells;
             const w = PIECE_DIMS[i].w;
             const h = PIECE_DIMS[i].h;
 
@@ -180,19 +181,16 @@ export const PuzzleBoard = ({ levelData, image, onPuzzleSolved, timeShared }: Pu
             let bestY = 0;
             let placed = false;
 
-            // Try 50 random positions to find a spot with no overlapping bounding boxes
-            for (let attempt = 0; attempt < 50; attempt++) {
+            // Try 200 random positions to find a spot with no overlapping cells
+            for (let attempt = 0; attempt < 200; attempt++) {
                 const randX = Math.floor(random() * Math.max(1, COLS - w + 1));
                 const randY = Math.floor(random() * Math.max(1, ROWS - h + 1));
 
                 let collision = false;
-                for (const box of placedBoxes) {
-                    if (
-                        randX < box.x + box.w &&
-                        randX + w > box.x &&
-                        randY < box.y + box.h &&
-                        randY + h > box.y
-                    ) {
+                for (const cell of cells) {
+                    const cy = randY + cell.y;
+                    const cx = randX + cell.x;
+                    if (cy >= 0 && cy < ROWS && cx >= 0 && cx < COLS && occupied[cy][cx]) {
                         collision = true;
                         break;
                     }
@@ -206,13 +204,45 @@ export const PuzzleBoard = ({ levelData, image, onPuzzleSolved, timeShared }: Pu
                 }
             }
 
-            // If the board is too crowded and we couldn't find a clean spot, fallback to a random spot
+            // If we couldn't find a random spot, systematically search the grid
+            if (!placed) {
+                for (let r = 0; r <= Math.max(0, ROWS - h); r++) {
+                    for (let c = 0; c <= Math.max(0, COLS - w); c++) {
+                        let collision = false;
+                        for (const cell of cells) {
+                            const cy = r + cell.y;
+                            const cx = c + cell.x;
+                            if (cy >= 0 && cy < ROWS && cx >= 0 && cx < COLS && occupied[cy][cx]) {
+                                collision = true;
+                                break;
+                            }
+                        }
+                        if (!collision) {
+                            bestX = c;
+                            bestY = r;
+                            placed = true;
+                            break;
+                        }
+                    }
+                    if (placed) break;
+                }
+            }
+
+            // Absolute fallback if somehow the board is physically full (which shouldn't happen with our grid math)
             if (!placed) {
                 bestX = Math.floor(random() * Math.max(1, COLS - w + 1));
                 bestY = Math.floor(random() * Math.max(1, ROWS - h + 1));
             }
 
-            placedBoxes.push({ x: bestX, y: bestY, w, h });
+            // Mark cells as occupied
+            for (const cell of cells) {
+                const cy = bestY + cell.y;
+                const cx = bestX + cell.x;
+                if (cy >= 0 && cy < ROWS && cx >= 0 && cx < COLS) {
+                    occupied[cy][cx] = true;
+                }
+            }
+
             positions.push({ x: bestX, y: bestY });
         }
         return positions;
@@ -394,6 +424,54 @@ export const PuzzleBoard = ({ levelData, image, onPuzzleSolved, timeShared }: Pu
         return true
     }
 
+    const isOccupied = (pieceIdx: number, gridX: number, gridY: number) => {
+        'worklet'
+        for (let idx = 0; idx < PIECES.length; idx++) {
+            if (idx === pieceIdx) continue;
+            
+            const otherX = Math.round(pieceStates[idx].posX.value / STEP);
+            const otherY = Math.round(pieceStates[idx].posY.value / STEP);
+
+            for (let j = 0; j < PIECES[pieceIdx].cells.length; j++) {
+                const cx1 = gridX + PIECES[pieceIdx].cells[j].x;
+                const cy1 = gridY + PIECES[pieceIdx].cells[j].y;
+
+                for (let k = 0; k < PIECES[idx].cells.length; k++) {
+                    const cx2 = otherX + PIECES[idx].cells[k].x;
+                    const cy2 = otherY + PIECES[idx].cells[k].y;
+                    if (cx1 === cx2 && cy1 === cy2) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    const findNearestEmptySpace = (pieceIdx: number, startX: number, startY: number) => {
+        'worklet'
+        if (canPlacePiece(pieceIdx, startX, startY) && !isOccupied(pieceIdx, startX, startY)) {
+            return { x: startX, y: startY };
+        }
+
+        const maxDist = Math.max(COLS, ROWS);
+        for (let radius = 1; radius <= maxDist; radius++) {
+            for (let dx = -radius; dx <= radius; dx++) {
+                for (let dy = -radius; dy <= radius; dy++) {
+                    if (Math.abs(dx) !== radius && Math.abs(dy) !== radius) continue;
+                    
+                    const testX = startX + dx;
+                    const testY = startY + dy;
+                    
+                    if (canPlacePiece(pieceIdx, testX, testY) && !isOccupied(pieceIdx, testX, testY)) {
+                        return { x: testX, y: testY };
+                    }
+                }
+            }
+        }
+        return { x: startX, y: startY };
+    }
+
     // ── Gesture ───────────────────────────────────────────────────
     const panGesture = usePanGesture({
         onActivate: (e) => {
@@ -448,41 +526,40 @@ export const PuzzleBoard = ({ levelData, image, onPuzzleSolved, timeShared }: Pu
 
             scheduleOnRN(playWhoosh)
 
-            const gridX = Math.round(pieceStates[i].posX.value / STEP)
-            const gridY = Math.round(pieceStates[i].posY.value / STEP)
+            const intendedX = Math.round(pieceStates[i].posX.value / STEP)
+            const intendedY = Math.round(pieceStates[i].posY.value / STEP)
 
-            if (canPlacePiece(i, gridX, gridY)) {
-                const snappedX = gridX * STEP
-                const snappedY = gridY * STEP
+            const bestSpot = findNearestEmptySpace(i, intendedX, intendedY)
+            const gridX = bestSpot.x
+            const gridY = bestSpot.y
 
-                const gridPositions = PIECES.map((_, idx) => {
-                    if (idx === i) return { x: gridX, y: gridY }
-                    return {
-                        x: Math.round(pieceStates[idx].posX.value / STEP),
-                        y: Math.round(pieceStates[idx].posY.value / STEP),
-                    }
-                })
+            const snappedX = gridX * STEP
+            const snappedY = gridY * STEP
 
-                const dx = gridPositions[0].x - PIECES[0].target.x
-                const dy = gridPositions[0].y - PIECES[0].target.y
-                const isComplete = gridPositions.every((pos, idx) => {
-                    return pos.x === PIECES[idx].target.x + dx && pos.y === PIECES[idx].target.y + dy
-                })
+            const gridPositions = PIECES.map((_, idx) => {
+                if (idx === i) return { x: gridX, y: gridY }
+                return {
+                    x: Math.round(pieceStates[idx].posX.value / STEP),
+                    y: Math.round(pieceStates[idx].posY.value / STEP),
+                }
+            })
 
-                pieceStates[i].posX.value = withTiming(snappedX, { duration: 150 })
-                pieceStates[i].posY.value = withTiming(snappedY, { duration: 150 }, () => {
-                    activePieceIndex.value = -1
-                    scheduleOnRN(dropToLayer)
-                    if (isComplete) {
-                        isPuzzleCompleted.value = true
-                        scheduleOnRN(handlePuzzleSolved)
-                        scheduleOnRN(playCorrect)
-                    }
-                })
-            } else {
+            const dx = gridPositions[0].x - PIECES[0].target.x
+            const dy = gridPositions[0].y - PIECES[0].target.y
+            const isComplete = gridPositions.every((pos, idx) => {
+                return pos.x === PIECES[idx].target.x + dx && pos.y === PIECES[idx].target.y + dy
+            })
+
+            pieceStates[i].posX.value = withTiming(snappedX, { duration: 150 })
+            pieceStates[i].posY.value = withTiming(snappedY, { duration: 150 }, () => {
                 activePieceIndex.value = -1
                 scheduleOnRN(dropToLayer)
-            }
+                if (isComplete) {
+                    isPuzzleCompleted.value = true
+                    scheduleOnRN(handlePuzzleSolved)
+                    scheduleOnRN(playCorrect)
+                }
+            })
         },
     })
 

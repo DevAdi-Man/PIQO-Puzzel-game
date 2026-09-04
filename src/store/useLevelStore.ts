@@ -19,16 +19,27 @@ const zustandStorage: StateStorage = {
 
 interface LevelState {
     currentLevelId: number;
+    maxUnlockedLevel: number;
     completeLevel: () => void;
+    playLevel: (id: number) => void;
     resetProgress: () => void;
 }
 
 export const useLevelStore = create<LevelState>()(
     persist(
-        (set) => ({
-            currentLevelId: 1, // Start at level 1
-            completeLevel: () => set((state) => ({ currentLevelId: state.currentLevelId + 1 })),
-            resetProgress: () => set({ currentLevelId: 1 }),
+        (set, get) => ({
+            currentLevelId: 1, // Currently active level
+            maxUnlockedLevel: 1, // Highest unlocked level
+            completeLevel: () => {
+                const { currentLevelId, maxUnlockedLevel } = get();
+                const nextLevel = currentLevelId + 1;
+                set({
+                    currentLevelId: nextLevel,
+                    maxUnlockedLevel: Math.max(maxUnlockedLevel, nextLevel)
+                });
+            },
+            playLevel: (id: number) => set({ currentLevelId: id }),
+            resetProgress: () => set({ currentLevelId: 1, maxUnlockedLevel: 1 }),
         }),
         {
             name: 'level-progress',

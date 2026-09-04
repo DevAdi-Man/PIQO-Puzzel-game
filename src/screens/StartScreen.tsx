@@ -1,7 +1,7 @@
 import { View, Text, StyleSheet, Pressable, Image } from 'react-native'
 import React from 'react'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { Canvas, Group, RoundedRect } from '@shopify/react-native-skia'
+import { Canvas, Group, LinearGradient, RoundedRect, vec } from '@shopify/react-native-skia'
 import Animated, { ZoomIn, FadeInDown, useSharedValue, useDerivedValue, withSpring } from 'react-native-reanimated'
 import { useNavigation } from '@react-navigation/native'
 
@@ -26,6 +26,9 @@ export const StartScreen = () => {
     // ── Button Animations ──────────────────────────────────────────
     const playPressY = useSharedValue(0)
     const playTransform = useDerivedValue(() => [{ translateY: playPressY.value }])
+
+    const levelsPressY = useSharedValue(0)
+    const levelsTransform = useDerivedValue(() => [{ translateY: levelsPressY.value }])
 
     const resetPressY = useSharedValue(0)
     const resetTransform = useDerivedValue(() => [{ translateY: resetPressY.value }])
@@ -72,6 +75,32 @@ export const StartScreen = () => {
                                 <Animated.View style={[{ transform: playTransform, width: '100%', height: 64, justifyContent: 'center', alignItems: 'center' }]}>
                                     <Text style={styles.mainButtonText}>
                                         {currentLevelId > 1 ? `RESUME LEVEL ${currentLevelId}` : 'NEW GAME'}
+                                    </Text>
+                                </Animated.View>
+                            </Pressable>
+                        </Animated.View>
+
+                        {/* Levels Button */}
+                        <Animated.View entering={FadeInDown.duration(600).delay(400).springify()}>
+                            <Pressable 
+                                onPress={() => navigation.navigate('Levels')}
+                                onPressIn={() => {
+                                    playPop();
+                                    levelsPressY.value = withSpring(8, { damping: 14, stiffness: 200 })
+                                }}
+                                onPressOut={() => levelsPressY.value = withSpring(0, { damping: 14, stiffness: 200 })}
+                                style={styles.mainButton}
+                            >
+                                <Canvas style={StyleSheet.absoluteFill}>
+                                    <RoundedRect x={0} y={12} width={240} height={68} r={20} color="rgba(0,0,0,0.15)" />
+                                    <RoundedRect x={0} y={8} width={240} height={64} r={20} color="#3d2a1d" />
+                                    <Group transform={levelsTransform}>
+                                        <RoundedRect x={0} y={0} width={240} height={64} r={20} color="#5a4230" />
+                                    </Group>
+                                </Canvas>
+                                <Animated.View style={[{ transform: levelsTransform, width: '100%', height: 64, justifyContent: 'center', alignItems: 'center' }]}>
+                                    <Text style={styles.mainButtonText}>
+                                        LEVELS
                                     </Text>
                                 </Animated.View>
                             </Pressable>

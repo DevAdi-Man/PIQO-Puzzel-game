@@ -4,7 +4,7 @@ import {
 import {
     createNativeStackNavigator,
 } from '@react-navigation/native-stack';
-import { PlayScreen, StartScreen } from '../screens';
+import { PlayScreen, StartScreen, LevelScreen } from '../screens';
 
 
 const RootStack = createNativeStackNavigator({
@@ -17,6 +17,10 @@ const RootStack = createNativeStackNavigator({
         Play: {
             screen: PlayScreen,
             options: { headerShown: false }
+        },
+        Levels: {
+            screen: LevelScreen,
+            options: { headerShown: false, animation: 'fade' }
         },
     }
 })
