@@ -11,6 +11,7 @@ import Sound from 'react-native-sound'
 Sound.setCategory('Playback')
 const popSound = new Sound(Image.resolveAssetSource(require('../assets/sounds/pop.mp3'))?.uri ?? '', '', (error) => {
     if (error) console.log('failed to load pop sound', error);
+    popSound?.setVolume(0.3);
 });
 
 const playPop = () => {

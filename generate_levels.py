@@ -1,5 +1,6 @@
 import json
 import random
+import math
 
 def slice_grid(w, h, num_pieces, board_cols, board_rows):
     grid = [[-1 for _ in range(w)] for _ in range(h)]
@@ -44,6 +45,8 @@ def slice_grid(w, h, num_pieces, board_cols, board_rows):
                 if grid[r][c] == i:
                     cells.append({"x": c, "y": r})
                     
+        if not cells: continue
+        
         min_x = min(c["x"] for c in cells)
         min_y = min(c["y"] for c in cells)
         norm_cells = [{"x": c["x"] - min_x, "y": c["y"] - min_y} for c in cells]
@@ -70,7 +73,7 @@ def slice_grid(w, h, num_pieces, board_cols, board_rows):
             if found: break
             
         if not found:
-            spawn_x, spawn_y = random.randint(0, board_cols - pw), random.randint(0, board_rows - ph)
+            spawn_x, spawn_y = random.randint(0, max(0, board_cols - pw)), random.randint(0, max(0, board_rows - ph))
             
         pieces.append({
             "id": f"piece-{i}",
@@ -85,25 +88,24 @@ def slice_grid(w, h, num_pieces, board_cols, board_rows):
 random.seed(42)
 
 levels = []
-configs = [
-    (3, 3, 4),  # L1
-    (3, 3, 5),  # L2
-    (4, 4, 6),  # L3
-    (4, 4, 7),  # L4
-    (4, 4, 8),  # L5
-    (5, 5, 9),  # L6
-    (5, 5, 10), # L7
-    (5, 5, 11), # L8
-    (5, 5, 12), # L9
-    (6, 6, 14), # L10
-]
 
-import math
+# Generate 75 configs progressively harder
+configs = []
+for i in range(75):
+    # Base width/height grows slowly from 3 to 8
+    size = min(8, 3 + int(i / 15))
+    # Number of pieces grows from 4 up to 39
+    pieces = min(39, 4 + int(i / 2))
+    
+    # Ensure pieces doesn't exceed total cells
+    pieces = min(pieces, size * size)
+    
+    configs.append((size, size, pieces))
 
 for idx, (w, h, pieces) in enumerate(configs):
     board_cols = math.ceil(w * 1.5)
     board_rows = math.ceil(h * 1.5)
-    img_num = (idx % 7) + 1
+    img_num = (idx % 30) + 1 # 30 images available (img1 to img30)
     levels.append({
         "level_id": idx + 1,
         "board_size": {"cols": board_cols, "rows": board_rows},
@@ -115,4 +117,4 @@ for idx, (w, h, pieces) in enumerate(configs):
 with open("src/assets/levels.json", "w") as f:
     json.dump(levels, f, indent=4)
 
-print("Levels generated successfully!")
+print("75 Levels generated successfully!")

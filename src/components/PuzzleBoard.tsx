@@ -17,6 +17,7 @@ const whooshSound = new Sound(Image.resolveAssetSource(require('../assets/sounds
 
 const popSound = new Sound(Image.resolveAssetSource(require('../assets/sounds/pop.mp3'))?.uri ?? '', '', (error) => {
     if (error) console.log('failed to load pop sound', error);
+    popSound?.setVolume(0.3);
 });
 
 const correctSound = new Sound(Image.resolveAssetSource(require('../assets/sounds/correct.mp3'))?.uri ?? '', '', (error) => {
@@ -90,7 +91,6 @@ function usePieceState(
         setIsLanded(false);
         const timeout = setTimeout(() => {
             entranceY.value = withSpring(0, { damping: 14, stiffness: 80, mass: 1 })
-            if (isActive) playWhoosh()
             setTimeout(() => {
                 isLandedSV.value = true;
                 setIsLanded(true);
@@ -445,6 +445,8 @@ export const PuzzleBoard = ({ levelData, image, onPuzzleSolved, timeShared }: Pu
             'worklet'
             const i = activePieceIndex.value
             if (i < 0) return
+
+            scheduleOnRN(playWhoosh)
 
             const gridX = Math.round(pieceStates[i].posX.value / STEP)
             const gridY = Math.round(pieceStates[i].posY.value / STEP)
