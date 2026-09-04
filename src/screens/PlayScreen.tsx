@@ -7,6 +7,7 @@ import { useNavigation } from '@react-navigation/native'
 
 import { useLevelStore } from '../store/useLevelStore'
 import { PuzzleBoard, LevelData } from '../components/PuzzleBoard'
+import { Star } from '../components/Star'
 import levelsDataJson from '../assets/levels.json'
 import Sound from 'react-native-sound'
 
@@ -88,6 +89,7 @@ export const PlayScreen = () => {
 
     // ── Timer State ───────────────────────────────────────────────
     const [timeLeft, setTimeLeft] = useState(300) // 5:00 minutes
+    const [earnedStars, setEarnedStars] = useState(0)
     const [isSolved, setIsSolved] = useState(false)
     const [showOverlay, setShowOverlay] = useState(false)
     const [isGameOver, setIsGameOver] = useState(false)
@@ -156,6 +158,15 @@ export const PlayScreen = () => {
     // ── Handlers ──────────────────────────────────────────────────
     const handlePuzzleSolved = useCallback(() => {
         setIsSolved(true)
+        
+        setTimeLeft((currentTime) => {
+            let stars = 1;
+            if (currentTime >= 180) stars = 3;
+            else if (currentTime >= 90) stars = 2;
+            setEarnedStars(stars);
+            return currentTime;
+        })
+
         setTimeout(() => {
             setShowOverlay(true)
         }, 1500)
@@ -167,9 +178,9 @@ export const PlayScreen = () => {
         if (isFinalLevel) {
             resetProgress()
         } else {
-            completeLevel() // Proceed to the next level in MMKV state
+            completeLevel(earnedStars) // Proceed to the next level in MMKV state
         }
-    }, [completeLevel, resetProgress, isFinalLevel])
+    }, [completeLevel, resetProgress, isFinalLevel, earnedStars])
 
     const handleResetLevel = useCallback(() => {
         setResetKey(k => k + 1) // Updating this key causes PuzzleBoard to completely remount!
@@ -273,7 +284,7 @@ export const PlayScreen = () => {
                         >
                             WELL DONE!
                         </Animated.Text>
-                        
+
                         <Animated.View entering={ZoomInUp.duration(500).delay(200)}>
                             <Pressable 
                                 onPress={handleLevelComplete} 

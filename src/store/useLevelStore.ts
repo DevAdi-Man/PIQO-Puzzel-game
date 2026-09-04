@@ -20,7 +20,8 @@ const zustandStorage: StateStorage = {
 interface LevelState {
     currentLevelId: number;
     maxUnlockedLevel: number;
-    completeLevel: () => void;
+    levelStars: Record<number, number>; // Maps levelId to stars earned (1-3)
+    completeLevel: (starsEarned?: number) => void;
     playLevel: (id: number) => void;
     resetProgress: () => void;
 }
@@ -30,16 +31,26 @@ export const useLevelStore = create<LevelState>()(
         (set, get) => ({
             currentLevelId: 1, // Currently active level
             maxUnlockedLevel: 1, // Highest unlocked level
-            completeLevel: () => {
-                const { currentLevelId, maxUnlockedLevel } = get();
+            levelStars: {}, // Track earned stars per level
+            completeLevel: (starsEarned = 0) => {
+                const { currentLevelId, maxUnlockedLevel, levelStars } = get();
                 const nextLevel = currentLevelId + 1;
+                
+                // Save the highest star count achieved for this level
+                const currentStars = levelStars[currentLevelId] || 0;
+                const newStars = Math.max(currentStars, starsEarned);
+                
                 set({
                     currentLevelId: nextLevel,
-                    maxUnlockedLevel: Math.max(maxUnlockedLevel, nextLevel)
+                    maxUnlockedLevel: Math.max(maxUnlockedLevel, nextLevel),
+                    levelStars: {
+                        ...levelStars,
+                        [currentLevelId]: newStars
+                    }
                 });
             },
             playLevel: (id: number) => set({ currentLevelId: id }),
-            resetProgress: () => set({ currentLevelId: 1, maxUnlockedLevel: 1 }),
+            resetProgress: () => set({ currentLevelId: 1, maxUnlockedLevel: 1, levelStars: {} }),
         }),
         {
             name: 'level-progress',
