@@ -1,214 +1,178 @@
-import { View, Text, StyleSheet, Pressable, Image } from 'react-native'
-import React, { useCallback, useState, useEffect } from 'react'
-import { SafeAreaView } from 'react-native-safe-area-context'
-import { Canvas, Group, Path, RoundedRect, Skia, useImage } from '@shopify/react-native-skia'
-import Animated, { FadeIn, ZoomInUp, FadeInDown, useSharedValue, useDerivedValue, withSpring, interpolateColor, withTiming, useAnimatedStyle } from 'react-native-reanimated'
-import { useNavigation } from '@react-navigation/native'
+import { View, Text, StyleSheet, Pressable } from 'react-native';
+import React, { useCallback, useState, useEffect, useRef } from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Canvas, Group, Path, RoundedRect, Skia, useImage } from '@shopify/react-native-skia';
+import Animated, {
+    FadeIn,
+    ZoomInUp,
+    FadeInDown,
+    useSharedValue,
+    useDerivedValue,
+    withSpring,
+    interpolateColor,
+    withTiming,
+    useAnimatedStyle,
+} from 'react-native-reanimated';
+import { useNavigation } from '@react-navigation/native';
 
-import { useLevelStore } from '../store/useLevelStore'
-import { PuzzleBoard, LevelData } from '../components/PuzzleBoard'
-import { Star } from '../components/Star'
-import levelsDataJson from '../assets/levels.json'
-import Sound from 'react-native-sound'
-
-Sound.setCategory('Playback')
-const popSound = new Sound(Image.resolveAssetSource(require('../assets/sounds/pop.mp3'))?.uri ?? '', '', (error) => {
-    if (error) console.log('failed to load pop sound', error);
-    popSound?.setVolume(0.3);
-});
-
-const playPop = () => {
-    popSound?.stop(() => {
-        popSound?.play();
-    });
-};
+import { useLevelStore } from '../store/useLevelStore';
+import { PuzzleBoard, LevelData } from '../components/PuzzleBoard';
+import levelsDataJson from '../assets/levels.json';
+import { ImageAssets } from '../assets/images';
+import { soundManager } from '../utils/soundManager';
 
 // Cast the JSON to our LevelData interface
-const levelsData = levelsDataJson as LevelData[]
-
-// ── Image Asset Mapping ───────────────────────────────────────────
-// React Native requires static strings for require().
-// This map makes it incredibly easy to swap out images in the future
-// while dynamically choosing them based on levels.json.
-const ImageAssets: Record<string, any> = {
-    'img1': require('../assets/images/img1.jpg'),
-    'img2': require('../assets/images/img2.jpg'),
-    'img3': require('../assets/images/img3.jpg'),
-    'img4': require('../assets/images/img4.jpg'),
-    'img5': require('../assets/images/img5.jpg'),
-    'img6': require('../assets/images/img6.jpg'),
-    'img7': require('../assets/images/img7.jpg'),
-    'img8': require('../assets/images/img8.jpg'),
-    'img9': require('../assets/images/img9.jpg'),
-    'img10': require('../assets/images/img10.jpg'),
-    'img11': require('../assets/images/img11.jpg'),
-    'img12': require('../assets/images/img12.jpg'),
-    'img13': require('../assets/images/img13.jpg'),
-    'img14': require('../assets/images/img14.jpg'),
-    'img15': require('../assets/images/img15.jpg'),
-    'img16': require('../assets/images/img16.jpg'),
-    'img17': require('../assets/images/img17.jpg'),
-    'img18': require('../assets/images/img18.jpg'),
-    'img19': require('../assets/images/img19.jpg'),
-    'img20': require('../assets/images/img20.jpg'),
-    'img21': require('../assets/images/img21.jpg'),
-    'img22': require('../assets/images/img22.jpg'),
-    'img23': require('../assets/images/img23.jpg'),
-    'img24': require('../assets/images/img24.jpg'),
-    'img25': require('../assets/images/img25.jpg'),
-    'img26': require('../assets/images/img26.jpg'),
-    'img27': require('../assets/images/img27.jpg'),
-    'img28': require('../assets/images/img28.jpg'),
-    'img29': require('../assets/images/img29.jpg'),
-    'img30': require('../assets/images/img30.jpg'),
-}
-
+const levelsData = levelsDataJson as LevelData[];
 
 // ── Icons ─────────────────────────────────────────────────────────
 const resetIconPath = Skia.Path.MakeFromSVGString(
-    "M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"
-)!
+    'M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z'
+)!;
 const nextIconPath = Skia.Path.MakeFromSVGString(
-    "M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z"
-)!
+    'M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z'
+)!;
 const backIconPath = Skia.Path.MakeFromSVGString(
-    "M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"
-)!
+    'M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z'
+)!;
 
 export const PlayScreen = () => {
-    const navigation = useNavigation<any>()
+    const navigation = useNavigation<any>();
     // ── Persistent State ──────────────────────────────────────────
-    const { currentLevelId, completeLevel, resetProgress } = useLevelStore()
-    
+    const { currentLevelId, completeLevel, saveLevelStars, resetProgress } = useLevelStore();
+
     // Find the level config from the JSON file
-    const levelData = levelsData.find(l => l.level_id === currentLevelId) || levelsData[0]
+    const levelData = levelsData.find((l) => l.level_id === currentLevelId) || levelsData[0];
 
     // Load the correct mapped image
-    const imageResource = ImageAssets[levelData.image] || ImageAssets['img1']
-    const image = useImage(imageResource)
+    const imageResource = ImageAssets[levelData.image] || ImageAssets.img1;
+    const image = useImage(imageResource);
 
     // ── Timer State ───────────────────────────────────────────────
-    const [timeLeft, setTimeLeft] = useState(300) // 5:00 minutes
-    const [earnedStars, setEarnedStars] = useState(0)
-    const [isSolved, setIsSolved] = useState(false)
-    const [showOverlay, setShowOverlay] = useState(false)
-    const [isGameOver, setIsGameOver] = useState(false)
-    const [resetKey, setResetKey] = useState(0) // Forces a full remount on "reset"
-    
+    const [timeLeft, setTimeLeft] = useState(300); // 5:00 minutes
+    const timeLeftRef = useRef(timeLeft);
+    timeLeftRef.current = timeLeft;
+
+    const [earnedStars, setEarnedStars] = useState(0);
+    const [isSolved, setIsSolved] = useState(false);
+    const [showOverlay, setShowOverlay] = useState(false);
+    const [isGameOver, setIsGameOver] = useState(false);
+    const [resetKey, setResetKey] = useState(0); // Forces a full remount on "reset"
+
     // ── Button Animation ──────────────────────────────────────────
-    const buttonPressY = useSharedValue(0)
-    const buttonTransform = useDerivedValue(() => [{ translateY: buttonPressY.value }])
+    const buttonPressY = useSharedValue(0);
+    const buttonTransform = useDerivedValue(() => [{ translateY: buttonPressY.value }]);
 
-    const topResetPressY = useSharedValue(0)
-    const topResetTransform = useDerivedValue(() => [{ translateY: topResetPressY.value }])
+    const topResetPressY = useSharedValue(0);
+    const topResetTransform = useDerivedValue(() => [{ translateY: topResetPressY.value }]);
 
-    const topBackPressY = useSharedValue(0)
-    const topBackTransform = useDerivedValue(() => [{ translateY: topBackPressY.value }])
+    const topBackPressY = useSharedValue(0);
+    const topBackTransform = useDerivedValue(() => [{ translateY: topBackPressY.value }]);
 
     // Reset timer state when a new level mounts or user taps "Reset"
     useEffect(() => {
-        setTimeLeft(300)
-        setIsSolved(false)
-        setShowOverlay(false)
-        setIsGameOver(false)
-        
-        // Auto-correct invalid level states (e.g., if user was on level 15 before we clamped it)
+        setTimeLeft(300);
+        setIsSolved(false);
+        setShowOverlay(false);
+        setIsGameOver(false);
+
+        // Auto-correct invalid level states
         if (currentLevelId > levelsData.length) {
-            resetProgress()
+            resetProgress();
         }
-    }, [currentLevelId, resetKey, resetProgress])
+    }, [currentLevelId, resetKey, resetProgress]);
 
     useEffect(() => {
         const interval = setInterval(() => {
             setTimeLeft((prev) => {
                 if (isSolved || prev <= 0) return prev;
                 return prev - 1;
-            })
-        }, 1000)
-        return () => clearInterval(interval)
-    }, [isSolved])
+            });
+        }, 1000);
+        return () => clearInterval(interval);
+    }, [isSolved]);
 
-    const timeShared = useSharedValue(timeLeft)
+    const timeShared = useSharedValue(timeLeft);
     useEffect(() => {
-        timeShared.value = withTiming(timeLeft, { duration: 1000 })
-    }, [timeLeft])
+        timeShared.value = withTiming(timeLeft, { duration: 1000 });
+    }, [timeLeft, timeShared]);
 
     const animatedBgStyle = useAnimatedStyle(() => {
         const bg = interpolateColor(
             timeShared.value,
             [0, 300],
             ['#7a3229', '#e4dccf']
-        )
-        return { backgroundColor: bg }
-    })
+        );
+        return { backgroundColor: bg };
+    });
 
     useEffect(() => {
         if (timeLeft === 0 && !isSolved && !isGameOver) {
-            setIsGameOver(true)
+            setIsGameOver(true);
             setTimeout(() => {
-                navigation.navigate('Start')
-            }, 2500)
+                navigation.navigate('Start');
+            }, 2500);
         }
-    }, [timeLeft, isSolved, isGameOver, navigation])
+    }, [timeLeft, isSolved, isGameOver, navigation]);
 
-    const mins = Math.floor(timeLeft / 60)
-    const secs = (timeLeft % 60).toString().padStart(2, '0')
-    const timeString = `${mins}:${secs}`
+    const mins = Math.floor(timeLeft / 60);
+    const secs = (timeLeft % 60).toString().padStart(2, '0');
+    const timeString = `${mins}:${secs}`;
 
     // ── Handlers ──────────────────────────────────────────────────
     const handlePuzzleSolved = useCallback(() => {
-        setIsSolved(true)
-        
-        setTimeLeft((currentTime) => {
-            let stars = 1;
-            if (currentTime >= 180) stars = 3;
-            else if (currentTime >= 90) stars = 2;
-            setEarnedStars(stars);
-            return currentTime;
-        })
+        setIsSolved(true);
+
+        const currentTime = timeLeftRef.current;
+        let stars = 1;
+        if (currentTime >= 180) stars = 3;
+        else if (currentTime >= 90) stars = 2;
+        setEarnedStars(stars);
 
         setTimeout(() => {
-            setShowOverlay(true)
-        }, 1500)
-    }, [])
+            setShowOverlay(true);
+        }, 1500);
+    }, []);
 
     const isFinalLevel = currentLevelId >= levelsData.length;
 
     const handleLevelComplete = useCallback(() => {
         if (isFinalLevel) {
-            resetProgress()
+            saveLevelStars(currentLevelId, earnedStars);
+            resetProgress();
         } else {
-            completeLevel(earnedStars) // Proceed to the next level in MMKV state
+            completeLevel(earnedStars, levelsData.length);
         }
-    }, [completeLevel, resetProgress, isFinalLevel, earnedStars])
+    }, [completeLevel, saveLevelStars, resetProgress, isFinalLevel, currentLevelId, earnedStars]);
 
     const handleResetLevel = useCallback(() => {
-        setResetKey(k => k + 1) // Updating this key causes PuzzleBoard to completely remount!
-    }, [])
+        setResetKey((k) => k + 1);
+    }, []);
 
     if (!image) {
         return (
-            <SafeAreaView style={{ flex: 1, backgroundColor: '#f7e5d0', justifyContent: 'center', alignItems: 'center' }}>
+            <SafeAreaView style={styles.loadingContainer}>
                 <Text style={styles.headerText}>Loading Image...</Text>
             </SafeAreaView>
-        )
+        );
     }
 
     return (
-        <Animated.View style={[{ flex: 1 }, animatedBgStyle]}>
-            <SafeAreaView style={{ flex: 1 }}>
+        <Animated.View style={[styles.mainContainer, animatedBgStyle]}>
+            <SafeAreaView style={styles.mainContainer}>
                 {/* ── UI Header ── */}
                 <View style={styles.headerContainer}>
-                    <Pressable 
-                        onPress={() => navigation.goBack()} 
+                    <Pressable
+                        onPress={() => navigation.goBack()}
                         onPressIn={() => {
-                            playPop();
-                            topBackPressY.value = withSpring(4, { damping: 12, stiffness: 200 })
+                            soundManager.playPop();
+                            topBackPressY.value = withSpring(4, { damping: 12, stiffness: 200 });
                         }}
-                        onPressOut={() => topBackPressY.value = withSpring(0, { damping: 12, stiffness: 200 })}
-                        style={{ position: 'absolute', left: 20, top: 16, width: 48, height: 48, zIndex: 10 }}
+                        onPressOut={() => {
+                            topBackPressY.value = withSpring(0, { damping: 12, stiffness: 200 });
+                        }}
+                        style={styles.backButton}
                     >
-                        <Canvas style={{ flex: 1 }}>
+                        <Canvas style={styles.fullFlex}>
                             <RoundedRect x={0} y={6} width={48} height={42} r={12} color="rgba(0,0,0,0.15)" />
                             <RoundedRect x={0} y={4} width={48} height={40} r={12} color="#d8cfb8" />
                             <Group transform={topBackTransform}>
@@ -223,25 +187,27 @@ export const PlayScreen = () => {
                     </Pressable>
                     <View style={styles.headerCenter}>
                         <Text style={styles.levelText}>LEVEL {currentLevelId}</Text>
-                        <View style={{ width: 100, height: 44, marginTop: 6, justifyContent: 'center', alignItems: 'center' }}>
-                            <Canvas style={{ ...StyleSheet.absoluteFill }}>
+                        <View style={styles.timerContainer}>
+                            <Canvas style={StyleSheet.absoluteFill}>
                                 <RoundedRect x={0} y={6} width={100} height={38} r={18} color="rgba(0,0,0,0.15)" />
                                 <RoundedRect x={0} y={4} width={100} height={36} r={18} color="#d8cfb8" />
                                 <RoundedRect x={0} y={0} width={100} height={36} r={18} color="#f8f4e6" />
                             </Canvas>
-                            <Text style={{ fontSize: 20, fontFamily: 'Nunito-ExtraBold', color: '#5a4230' }}>{timeString}</Text>
+                            <Text style={styles.timerText}>{timeString}</Text>
                         </View>
                     </View>
-                    <Pressable 
-                        onPress={handleResetLevel} 
+                    <Pressable
+                        onPress={handleResetLevel}
                         onPressIn={() => {
-                            playPop();
-                            topResetPressY.value = withSpring(4, { damping: 12, stiffness: 200 })
+                            soundManager.playPop();
+                            topResetPressY.value = withSpring(4, { damping: 12, stiffness: 200 });
                         }}
-                        onPressOut={() => topResetPressY.value = withSpring(0, { damping: 12, stiffness: 200 })}
-                        style={{ position: 'absolute', right: 20, top: 16, width: 48, height: 48 }}
+                        onPressOut={() => {
+                            topResetPressY.value = withSpring(0, { damping: 12, stiffness: 200 });
+                        }}
+                        style={styles.resetButton}
                     >
-                        <Canvas style={{ flex: 1 }}>
+                        <Canvas style={styles.fullFlex}>
                             <RoundedRect x={0} y={6} width={48} height={42} r={12} color="rgba(0,0,0,0.15)" />
                             <RoundedRect x={0} y={4} width={48} height={40} r={12} color="#d8cfb8" />
                             <Group transform={topResetTransform}>
@@ -257,8 +223,7 @@ export const PlayScreen = () => {
                 </View>
 
                 {/* ── Puzzle Engine ── */}
-                {/* Using key={currentLevelId + resetKey} causes React to completely tear down and safely rebuild the entire puzzle engine */}
-                <PuzzleBoard 
+                <PuzzleBoard
                     key={`level-${currentLevelId}-reset-${resetKey}`}
                     levelData={levelData}
                     image={image}
@@ -277,28 +242,38 @@ export const PlayScreen = () => {
             {/* ── Full Screen Completion Overlay ── */}
             {showOverlay && (
                 <Animated.View style={styles.completionOverlay} entering={FadeIn.duration(400)}>
-                    <View style={{ alignItems: 'center' }}>
-                        <Animated.Text 
-                            entering={ZoomInUp.duration(500)} 
+                    <View style={styles.centerAlign}>
+                        <Animated.Text
+                            entering={ZoomInUp.duration(500)}
                             style={styles.completionText}
                         >
                             WELL DONE!
                         </Animated.Text>
 
                         <Animated.View entering={ZoomInUp.duration(500).delay(200)}>
-                            <Pressable 
-                                onPress={handleLevelComplete} 
-                                onPressIn={() => buttonPressY.value = withSpring(6, { damping: 12, stiffness: 200 })}
-                                onPressOut={() => buttonPressY.value = withSpring(0, { damping: 12, stiffness: 200 })}
-                                style={{ width: 120, height: 60, marginTop: 32 }}
+                            <Pressable
+                                onPress={handleLevelComplete}
+                                onPressIn={() => {
+                                    buttonPressY.value = withSpring(6, { damping: 12, stiffness: 200 });
+                                }}
+                                onPressOut={() => {
+                                    buttonPressY.value = withSpring(0, { damping: 12, stiffness: 200 });
+                                }}
+                                style={styles.completeButton}
                             >
-                                <Canvas style={{ flex: 1 }}>
+                                <Canvas style={styles.fullFlex}>
                                     <RoundedRect x={0} y={10} width={120} height={50} r={16} color="rgba(0,0,0,0.15)" />
                                     <RoundedRect x={0} y={6} width={120} height={48} r={16} color="#3d2a1d" />
                                     <Group transform={buttonTransform}>
                                         <RoundedRect x={0} y={0} width={120} height={48} r={16} color="#5a4230" />
                                         {nextIconPath && (
-                                            <Group transform={[{ translateX: isFinalLevel ? 44 : 42 }, { translateY: isFinalLevel ? 8 : 6 }, { scale: isFinalLevel ? 1.2 : 1.5 }]}>
+                                            <Group
+                                                transform={[
+                                                    { translateX: isFinalLevel ? 44 : 42 },
+                                                    { translateY: isFinalLevel ? 8 : 6 },
+                                                    { scale: isFinalLevel ? 1.2 : 1.5 },
+                                                ]}
+                                            >
                                                 <Path path={isFinalLevel ? resetIconPath : nextIconPath} color="white" />
                                             </Group>
                                         )}
@@ -313,9 +288,9 @@ export const PlayScreen = () => {
             {/* ── Full Screen Game Over Overlay ── */}
             {isGameOver && (
                 <Animated.View style={styles.completionOverlay} entering={FadeIn.duration(400)}>
-                    <View style={{ alignItems: 'center' }}>
-                        <Animated.Text 
-                            entering={FadeInDown.duration(600).springify().damping(12).stiffness(150)} 
+                    <View style={styles.centerAlign}>
+                        <Animated.Text
+                            entering={FadeInDown.duration(600).springify().damping(12).stiffness(150)}
                             style={styles.completionText}
                         >
                             GAME OVER
@@ -324,10 +299,25 @@ export const PlayScreen = () => {
                 </Animated.View>
             )}
         </Animated.View>
-    )
-}
+    );
+};
 
 const styles = StyleSheet.create({
+    mainContainer: {
+        flex: 1,
+    },
+    fullFlex: {
+        flex: 1,
+    },
+    centerAlign: {
+        alignItems: 'center',
+    },
+    loadingContainer: {
+        flex: 1,
+        backgroundColor: '#f7e5d0',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
     headerText: {
         fontSize: 16,
         fontFamily: 'Nunito-ExtraBold',
@@ -344,6 +334,33 @@ const styles = StyleSheet.create({
         alignItems: 'flex-start',
         position: 'relative',
         zIndex: 10,
+    },
+    backButton: {
+        position: 'absolute',
+        left: 20,
+        top: 16,
+        width: 48,
+        height: 48,
+        zIndex: 10,
+    },
+    resetButton: {
+        position: 'absolute',
+        right: 20,
+        top: 16,
+        width: 48,
+        height: 48,
+    },
+    timerContainer: {
+        width: 100,
+        height: 44,
+        marginTop: 6,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    timerText: {
+        fontSize: 20,
+        fontFamily: 'Nunito-ExtraBold',
+        color: '#5a4230',
     },
     headerCenter: {
         alignItems: 'center',
@@ -366,6 +383,11 @@ const styles = StyleSheet.create({
         textAlign: 'center',
         lineHeight: 28,
     },
+    completeButton: {
+        width: 120,
+        height: 60,
+        marginTop: 32,
+    },
     completionOverlay: {
         ...StyleSheet.absoluteFill,
         backgroundColor: 'rgba(0, 0, 0, 0.4)',
@@ -382,4 +404,4 @@ const styles = StyleSheet.create({
         textShadowOffset: { width: 0, height: 4 },
         textShadowRadius: 8,
     },
-})
+});
