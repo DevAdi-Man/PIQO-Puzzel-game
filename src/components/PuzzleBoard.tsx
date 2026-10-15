@@ -366,6 +366,14 @@ export const PuzzleBoard = React.memo(({ levelData, image, onPuzzleSolved, timeS
 
             const t1 = setTimeout(() => {
                 piece.entranceY.value = withSpring(0, { damping: 14, stiffness: 80, mass: 1 });
+
+                // Sound fires at first visual impact (~500 ms into the spring),
+                // not at full settle (1000 ms) — keeps thud in sync with the piece hitting the board.
+                const tSound = setTimeout(() => {
+                    soundManager.playDrop();
+                }, 500);
+                timeouts.push(tSound);
+
                 const t2 = setTimeout(() => {
                     piece.isLandedSV.value = true;
                     setLandedIndices((prev) => (prev.includes(index) ? prev : [...prev, index]));

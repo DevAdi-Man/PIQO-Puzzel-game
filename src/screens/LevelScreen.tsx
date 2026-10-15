@@ -40,6 +40,7 @@ const TILE_GAP = 14;
 const TILE_DEPTH = 6;
 const CHAPTER_HEADER_HEIGHT = 92;
 const MAX_STARS = 3;
+const STARS_PILL_W = 96;   // fixed width for the Skia-drawn stars pill
 
 // ── Palette ───────────────────────────────────────────────────────
 const COLORS = {
@@ -214,6 +215,7 @@ const ChapterPage = React.memo(({ chapter, width, height, maxUnlockedLevel, leve
     const maxStars = (chapter.lastLevel - chapter.firstLevel + 1) * MAX_STARS;
 
     const gridHeight = height - CHAPTER_HEADER_HEIGHT;
+    const headerW = width - PAGE_PADDING * 2;   // pixel width for Skia canvas
     const tileSize = Math.floor(
         Math.min(
             (width - PAGE_PADDING * 2 - TILE_GAP * (GRID_COLS - 1)) / GRID_COLS,
@@ -226,6 +228,11 @@ const ChapterPage = React.memo(({ chapter, width, height, maxUnlockedLevel, leve
     return (
         <View style={[styles.page, { width, height }]}>
             <View style={styles.chapterHeader}>
+                <Canvas style={StyleSheet.absoluteFill}>
+                    <RoundedRect x={0} y={6} width={headerW} height={CHAPTER_HEADER_HEIGHT - 14} r={18} color="rgba(0,0,0,0.15)" />
+                    <RoundedRect x={0} y={5} width={headerW} height={CHAPTER_HEADER_HEIGHT - 16} r={18} color={COLORS.cardEdge} />
+                    <RoundedRect x={0} y={0} width={headerW} height={CHAPTER_HEADER_HEIGHT - 16} r={18} color={COLORS.card} />
+                </Canvas>
                 <View style={styles.chapterTitleRow}>
                     <View style={styles.chapterTitles}>
                         <Text style={styles.chapterLabel}>
@@ -275,6 +282,10 @@ export const LevelScreen = () => {
     const levelStars = useLevelStore((state) => state.levelStars);
     const backScale = useSharedValue(1);
     const backStyle = useAnimatedStyle(() => ({ transform: [{ scale: backScale.value }] }));
+    const prevScale = useSharedValue(1);
+    const prevStyle = useAnimatedStyle(() => ({ transform: [{ scale: prevScale.value }] }));
+    const nextScale = useSharedValue(1);
+    const nextStyle = useAnimatedStyle(() => ({ transform: [{ scale: nextScale.value }] }));
 
     const currentChapter = Math.min(Math.floor((maxUnlockedLevel - 1) / LEVELS_PER_CHAPTER), CHAPTERS.length - 1);
     const [page, setPage] = useState(currentChapter);
@@ -358,6 +369,11 @@ export const LevelScreen = () => {
                     </Pressable>
                     <Text style={styles.headerTitle}>LEVELS</Text>
                     <View style={styles.starsPill}>
+                        <Canvas style={StyleSheet.absoluteFill}>
+                            <RoundedRect x={0} y={6} width={STARS_PILL_W} height={42} r={14} color="rgba(0,0,0,0.15)" />
+                            <RoundedRect x={0} y={4} width={STARS_PILL_W} height={40} r={14} color={COLORS.cardEdge} />
+                            <RoundedRect x={0} y={0} width={STARS_PILL_W} height={40} r={14} color={COLORS.card} />
+                        </Canvas>
                         <Text style={styles.starsPillText}>
                             <Text style={styles.starOnText}>★ </Text>
                             {totalStars}
@@ -388,15 +404,29 @@ export const LevelScreen = () => {
                 </View>
 
                 <View style={styles.footer}>
+                    {/* ── Prev button ── */}
                     <Pressable
                         onPress={() => goToPage(page - 1)}
                         disabled={page === 0}
-                        style={[styles.arrowButton, page === 0 && styles.arrowDisabled]}
+                        style={page === 0 && styles.arrowDisabled}
+                        onPressIn={() => {
+                            soundManager.playPop();
+                            prevScale.value = withSpring(0.85, { damping: 14 });
+                        }}
+                        onPressOut={() => { prevScale.value = withSpring(1, { damping: 14 }); }}
                         accessibilityRole="button"
                         accessibilityLabel="Previous chapter"
                     >
-                        <Text style={styles.arrowText}>‹</Text>
+                        <Animated.View style={[styles.arrowButton, prevStyle]}>
+                            <Canvas style={StyleSheet.absoluteFill}>
+                                <RoundedRect x={0} y={6} width={48} height={38} r={14} color="rgba(0,0,0,0.15)" />
+                                <RoundedRect x={0} y={4} width={48} height={36} r={14} color={COLORS.cardEdge} />
+                                <RoundedRect x={0} y={0} width={48} height={36} r={14} color={COLORS.card} />
+                            </Canvas>
+                            <Text style={styles.arrowText}>‹</Text>
+                        </Animated.View>
                     </Pressable>
+
                     <View style={styles.dots}>
                         {CHAPTERS.map((chapter) => (
                             <Pressable
@@ -410,16 +440,31 @@ export const LevelScreen = () => {
                             </Pressable>
                         ))}
                     </View>
+
+                    {/* ── Next button ── */}
                     <Pressable
                         onPress={() => goToPage(page + 1)}
                         disabled={page === CHAPTERS.length - 1}
-                        style={[styles.arrowButton, page === CHAPTERS.length - 1 && styles.arrowDisabled]}
+                        style={page === CHAPTERS.length - 1 && styles.arrowDisabled}
+                        onPressIn={() => {
+                            soundManager.playPop();
+                            nextScale.value = withSpring(0.85, { damping: 14 });
+                        }}
+                        onPressOut={() => { nextScale.value = withSpring(1, { damping: 14 }); }}
                         accessibilityRole="button"
                         accessibilityLabel="Next chapter"
                     >
-                        <Text style={styles.arrowText}>›</Text>
+                        <Animated.View style={[styles.arrowButton, nextStyle]}>
+                            <Canvas style={StyleSheet.absoluteFill}>
+                                <RoundedRect x={0} y={6} width={48} height={38} r={14} color="rgba(0,0,0,0.15)" />
+                                <RoundedRect x={0} y={4} width={48} height={36} r={14} color={COLORS.cardEdge} />
+                                <RoundedRect x={0} y={0} width={48} height={36} r={14} color={COLORS.card} />
+                            </Canvas>
+                            <Text style={styles.arrowText}>›</Text>
+                        </Animated.View>
                     </Pressable>
                 </View>
+
             </SafeAreaView>
         </View>
     );
@@ -451,15 +496,11 @@ const styles = StyleSheet.create({
         letterSpacing: 2,
     },
     starsPill: {
-        minWidth: 48,
-        height: 36,
-        paddingHorizontal: 12,
-        borderRadius: 18,
-        backgroundColor: COLORS.card,
-        borderBottomWidth: 4,
-        borderBottomColor: COLORS.cardEdge,
+        width: STARS_PILL_W,
+        height: 48,
         justifyContent: 'center',
         alignItems: 'center',
+        paddingBottom: 8, // centres text inside the face layer (y 0–40) not the full 48 px view
     },
     starsPillText: {
         fontSize: 15,
@@ -484,16 +525,13 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     chapterHeader: {
-        height: CHAPTER_HEADER_HEIGHT - 16,
+        height: CHAPTER_HEADER_HEIGHT - 8,     // face(76) + 8 so shadow (y6+h78=84) isn't clipped
         width: '100%',
         marginTop: 4,
         marginBottom: 12,
         paddingHorizontal: 16,
-        paddingVertical: 10,
-        borderRadius: 18,
-        backgroundColor: COLORS.card,
-        borderBottomWidth: 5,
-        borderBottomColor: COLORS.cardEdge,
+        paddingTop: 10,
+        paddingBottom: 18,                     // 10 + 8 to keep content centred in face layer
         justifyContent: 'space-between',
     },
     chapterTitleRow: {
@@ -617,12 +655,9 @@ const styles = StyleSheet.create({
     arrowButton: {
         width: 48,
         height: 44,
-        borderRadius: 14,
-        backgroundColor: COLORS.card,
-        borderBottomWidth: 4,
-        borderBottomColor: COLORS.cardEdge,
         justifyContent: 'center',
         alignItems: 'center',
+        paddingBottom: 10,   // shifts glyph ~5px up inside the face layer
     },
     arrowDisabled: {
         opacity: 0.35,

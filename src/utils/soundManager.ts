@@ -4,7 +4,7 @@ import Sound from 'react-native-sound';
 Sound.setCategory('Playback');
 
 const SOUND_SOURCES = {
-    pop: { asset: require('../assets/sounds/pop.mp3'), volume: 0.35 },
+    pop: { asset: require('../assets/sounds/pop.mp3'), volume: 0.2 },
     drop: { asset: require('../assets/sounds/drop.mp3'), volume: 0.7 },
     merge: { asset: require('../assets/sounds/merge.mp3'), volume: 0.8 },
     correct: { asset: require('../assets/sounds/correct.mp3'), volume: 1.0 },
