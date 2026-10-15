@@ -1,18 +1,15 @@
 import { View, useWindowDimensions, StyleSheet } from 'react-native';
-import React, { useCallback, useMemo, useState, useEffect } from 'react';
+import React, { useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import {
     Canvas,
     Group,
     Path,
-    RoundedRect,
     Skia,
-    Image as SkImage,
+    ImageShader,
     Rect,
     LinearGradient,
     vec,
-    Mask,
     CornerPathEffect,
-    PathOp,
 } from '@shopify/react-native-skia';
 import {
     useDerivedValue,
@@ -27,7 +24,7 @@ import {
 import { GestureDetector, usePanGesture } from 'react-native-gesture-handler';
 import { scheduleOnRN } from 'react-native-worklets';
 import type { SharedValue } from 'react-native-reanimated';
-import type { SkImage as SkImageType } from '@shopify/react-native-skia';
+import type { SkImage as SkImageType, SkPath } from '@shopify/react-native-skia';
 import { soundManager } from '../utils/soundManager';
 
 // ── Types ─────────────────────────────────────────────────────────
@@ -62,15 +59,101 @@ export interface PuzzleBoardProps {
 export interface PieceState {
     posX: SharedValue<number>;
     posY: SharedValue<number>;
+    /** Grid cell the piece occupies (or is snapping to). Updated the moment it is dropped. */
+    gridX: SharedValue<number>;
+    gridY: SharedValue<number>;
     entranceY: SharedValue<number>;
     isLandedSV: SharedValue<boolean>;
 }
 
 // ── Constants ─────────────────────────────────────────────────────
-const GAP = 16;
 const BLEED = 50;
+const EDGE_COLOR = '#3d2a1d';
+const SHADOW_COLOR = 'rgba(0,0,0,0.18)';
 
-// ── Subcomponent for dynamic piece transform ──────────────────────
+// ── Geometry helpers ──────────────────────────────────────────────
+interface Metrics {
+    STEP: number;
+    GAP: number;
+    cellSize: number;
+    /** How far a piece's surface reaches past its cell into the gap. Less than GAP / 2,
+     *  so two unrelated pieces sitting side by side keep a visible seam between them. */
+    ext: number;
+}
+
+/**
+ * Outline of a set of grid cells. Gaps are bridged only between cells that are in the set,
+ * so the shape never fills holes or spills into gaps next to cells it does not own.
+ */
+const buildCellsPath = (cells: Cell[], m: Metrics): SkPath => {
+    const owned = new Set(cells.map((c) => `${c.x},${c.y}`));
+    const has = (x: number, y: number) => owned.has(`${x},${y}`);
+    const { STEP, GAP, cellSize, ext } = m;
+    const path = Skia.Path.Make();
+
+    for (const { x, y } of cells) {
+        const left = x * STEP;
+        const top = y * STEP;
+        path.addRect(Skia.XYWHRect(left - ext, top - ext, cellSize + ext * 2, cellSize + ext * 2));
+        const right = has(x + 1, y);
+        const down = has(x, y + 1);
+        if (right) {
+            path.addRect(Skia.XYWHRect(left + cellSize, top - ext, GAP, cellSize + ext * 2));
+        }
+        if (down) {
+            path.addRect(Skia.XYWHRect(left - ext, top + cellSize, cellSize + ext * 2, GAP));
+        }
+        if (right && down && has(x + 1, y + 1)) {
+            path.addRect(Skia.XYWHRect(left + cellSize, top + cellSize, GAP, GAP));
+        }
+    }
+    // Merge the overlapping rects into one outline so CornerPathEffect rounds only the real corners.
+    path.simplify();
+    return path;
+};
+
+/**
+ * Groups resting pieces that should look merged: pieces that touch along a side AND sit in
+ * their correct position relative to each other. Pieces that merely touch stay separate.
+ */
+export const groupRestingPieces = (pieces: PieceDef[], grid: Cell[], resting: number[]): number[][] => {
+    const parent = new Map<number, number>();
+    const find = (i: number): number => {
+        let root = i;
+        while (parent.get(root) !== root) root = parent.get(root)!;
+        parent.set(i, root);
+        return root;
+    };
+    resting.forEach((i) => parent.set(i, i));
+
+    const offsetKey = (i: number) => `${grid[i].x - pieces[i].target.x},${grid[i].y - pieces[i].target.y}`;
+
+    const owner = new Map<string, number>();
+    for (const i of resting) {
+        for (const c of pieces[i].cells) owner.set(`${grid[i].x + c.x},${grid[i].y + c.y}`, i);
+    }
+    for (const i of resting) {
+        for (const c of pieces[i].cells) {
+            const ax = grid[i].x + c.x;
+            const ay = grid[i].y + c.y;
+            for (const key of [`${ax + 1},${ay}`, `${ax},${ay + 1}`]) {
+                const j = owner.get(key);
+                if (j !== undefined && j !== i && offsetKey(i) === offsetKey(j)) {
+                    parent.set(find(i), find(j));
+                }
+            }
+        }
+    }
+
+    const byRoot = new Map<number, number[]>();
+    for (const i of resting) {
+        const root = find(i);
+        byRoot.set(root, [...(byRoot.get(root) ?? []), i]);
+    }
+    return Array.from(byRoot.values());
+};
+
+// ── Subcomponents ─────────────────────────────────────────────────
 interface PieceGroupProps {
     state: PieceState;
     children: React.ReactNode;
@@ -85,7 +168,20 @@ const PieceGroup = ({ state, children }: PieceGroupProps) => {
     return <Group transform={transform}>{children}</Group>;
 };
 
-export const PuzzleBoard = ({ levelData, image, onPuzzleSolved, timeShared }: PuzzleBoardProps) => {
+interface PuzzleImageFillProps {
+    image: SkImageType;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+}
+
+/** Paints the puzzle picture into the parent shape — no Mask / saveLayer needed. */
+const PuzzleImageFill = ({ image, x, y, width, height }: PuzzleImageFillProps) => (
+    <ImageShader image={image} fit="fill" x={x} y={y} width={width} height={height} />
+);
+
+export const PuzzleBoard = React.memo(({ levelData, image, onPuzzleSolved, timeShared }: PuzzleBoardProps) => {
     const { width } = useWindowDimensions();
 
     const COLS = levelData.board_size.cols;
@@ -98,9 +194,23 @@ export const PuzzleBoard = ({ levelData, image, onPuzzleSolved, timeShared }: Pu
     });
 
     // ── Board dimensions ──────────────────────────────────────────
+    // Gap, corner radius and depth scale with the cell size so big boards (11×11) don't
+    // end up with gaps as wide as the cells themselves.
     const boardSize = width * 0.9;
+    const GAP = Math.min(16, Math.round((boardSize / COLS) * 0.22));
     const cellSize = (boardSize - GAP * (COLS - 1)) / COLS;
     const STEP = cellSize + GAP;
+    const RADIUS = Math.max(3, Math.min(6, GAP * 0.4));
+    const DEPTH = Math.max(3, Math.round(GAP * 0.33));
+    const SEAM = Math.max(2, GAP * 0.25);
+
+    const metrics: Metrics = useMemo(
+        () => ({ STEP, GAP, cellSize, ext: GAP / 2 - SEAM / 2 }),
+        [STEP, GAP, cellSize, SEAM]
+    );
+
+    const imageWidth = levelData.puzzle_size.cols * STEP;
+    const imageHeight = levelData.puzzle_size.rows * STEP;
 
     const PIECE_DIMS = useMemo(
         () =>
@@ -221,25 +331,29 @@ export const PuzzleBoard = ({ levelData, image, onPuzzleSolved, timeShared }: Pu
         return positions;
     }, [PIECES, PIECE_DIMS, COLS, ROWS, levelData.level_id]);
 
+    // ── Piece positions (JS side mirror, drives the static layer) ─
+    const [grid, setGrid] = useState(spawnPositions);
+    const gridRef = useRef(grid);
+    gridRef.current = grid;
+
     // ── Dynamic piece state management ────────────────────────────
     const pieceStates: PieceState[] = useMemo(() => {
         return PIECES.map((_, index) => {
-            const initialX = (spawnPositions[index]?.x || 0) * STEP;
-            const initialY = (spawnPositions[index]?.y || 0) * STEP;
+            const cell = gridRef.current[index] ?? { x: 0, y: 0 };
             return {
-                posX: makeMutable(initialX),
-                posY: makeMutable(initialY),
+                posX: makeMutable(cell.x * STEP),
+                posY: makeMutable(cell.y * STEP),
+                gridX: makeMutable(cell.x),
+                gridY: makeMutable(cell.y),
                 entranceY: makeMutable(-1200),
                 isLandedSV: makeMutable(false),
             };
         });
-    }, [PIECES, spawnPositions, STEP]);
+    }, [PIECES, STEP]);
 
     const [landedIndices, setLandedIndices] = useState<number[]>([]);
-    const [frontPiece, setFrontPiece] = useState(-1);
-
-    const bringToFront = useCallback((i: number) => setFrontPiece(i), []);
-    const dropToLayer = useCallback(() => setFrontPiece(-1), []);
+    /** Pieces lifted off the board (being dragged or snapping into place), last = topmost. */
+    const [liftedPieces, setLiftedPieces] = useState<number[]>([]);
 
     // Staggered entrance animation
     useEffect(() => {
@@ -277,94 +391,67 @@ export const PuzzleBoard = ({ levelData, image, onPuzzleSolved, timeShared }: Pu
         ];
     }, [STEP, targetX0, targetY0, pieceStates]);
 
-    const handlePuzzleSolved = useCallback(() => {
-        onPuzzleSolved();
-    }, [onPuzzleSolved]);
+    const handlePickUp = useCallback((i: number) => {
+        soundManager.playPop();
+        setLiftedPieces((prev) => [...prev.filter((p) => p !== i), i]);
+    }, []);
 
-    const piecePaths = useMemo(() => {
-        return PIECES.map((piece) => {
-            const path = Skia.Path.Make();
-            let first = true;
-            for (const cell of piece.cells) {
-                const cellP = Skia.Path.Make();
-                cellP.addRect(
-                    Skia.XYWHRect(
-                        cell.x * STEP - GAP / 2 - 0.5,
-                        cell.y * STEP - GAP / 2 - 0.5,
-                        STEP + 1,
-                        STEP + 1
-                    )
-                );
-                if (first) {
-                    path.addPath(cellP);
-                    first = false;
-                } else {
-                    path.op(cellP, PathOp.Union);
-                }
+    const handleDropped = useCallback(
+        (i: number, gx: number, gy: number, merged: boolean, isComplete: boolean) => {
+            if (isComplete) {
+                soundManager.playCorrect();
+            } else if (merged) {
+                soundManager.playMerge();
+            } else {
+                soundManager.playDrop();
             }
-            return path;
-        });
-    }, [STEP, PIECES]);
+            setGrid((prev) => {
+                const next = prev.slice();
+                next[i] = { x: gx, y: gy };
+                return next;
+            });
+            setLiftedPieces((prev) => prev.filter((p) => p !== i));
+            if (isComplete) onPuzzleSolved();
+        },
+        [onPuzzleSolved]
+    );
 
-    const pieceMaskPaths = useMemo(() => {
-        return PIECES.map((piece) => {
-            const path = Skia.Path.Make();
-            let first = true;
-            for (const cell of piece.cells) {
-                const cellP = Skia.Path.Make();
-                cellP.addRect(
-                    Skia.XYWHRect(
-                        cell.x * STEP - GAP / 2 - 8,
-                        cell.y * STEP - GAP / 2 - 8,
-                        STEP + 16,
-                        STEP + 16
-                    )
-                );
-                if (first) {
-                    path.addPath(cellP);
-                    first = false;
-                } else {
-                    path.op(cellP, PathOp.Union);
-                }
-            }
-            return path;
-        });
-    }, [STEP, PIECES]);
-
-    const basePiecesUnion = useDerivedValue(() => {
-        const union = Skia.Path.Make();
-        let first = true;
-        for (let i = 0; i < PIECES.length; i++) {
-            if (i === activePieceIndex.value) continue;
-            if (!pieceStates[i]?.isLandedSV.value) continue;
-
-            const gridX = Math.round(pieceStates[i].posX.value / STEP);
-            const gridY = Math.round(pieceStates[i].posY.value / STEP);
-
-            for (const cell of PIECES[i].cells) {
-                const absX = gridX + cell.x;
-                const absY = gridY + cell.y;
-
-                const cellP = Skia.Path.Make();
-                cellP.addRect(
-                    Skia.XYWHRect(
-                        absX * STEP - GAP / 2 - 1,
-                        absY * STEP - GAP / 2 - 1,
-                        STEP + 2,
-                        STEP + 2
-                    )
-                );
-
-                if (first) {
-                    union.addPath(cellP);
-                    first = false;
-                } else {
-                    union.op(cellP, PathOp.Union);
-                }
+    // ── Static geometry ───────────────────────────────────────────
+    const cellsPath = useMemo(() => {
+        const path = Skia.Path.Make();
+        for (let row = 0; row < ROWS; row++) {
+            for (let col = 0; col < COLS; col++) {
+                path.addRRect(Skia.RRectXY(Skia.XYWHRect(col * STEP, row * STEP, cellSize, cellSize), RADIUS, RADIUS));
             }
         }
-        return union;
-    }, [PIECES, pieceStates, STEP, activePieceIndex]);
+        return path;
+    }, [ROWS, COLS, STEP, cellSize, RADIUS]);
+
+    const piecePaths = useMemo(() => PIECES.map((piece) => buildCellsPath(piece.cells, metrics)), [PIECES, metrics]);
+
+    /**
+     * Pieces resting on the board. Only correctly-joined pieces share one slab (see
+     * groupRestingPieces); everything else keeps its own outline and the seam between them.
+     */
+    const restingGroups = useMemo(() => {
+        const lifted = new Set(liftedPieces);
+        const resting = landedIndices.filter((i) => !lifted.has(i));
+
+        const allShapes = Skia.Path.Make();
+        const groups = groupRestingPieces(PIECES, grid, resting).map((members) => {
+            const cells: Cell[] = [];
+            for (const i of members) {
+                for (const c of PIECES[i].cells) cells.push({ x: grid[i].x + c.x, y: grid[i].y + c.y });
+            }
+            const path = buildCellsPath(cells, metrics);
+            allShapes.addPath(path);
+            const first = members[0];
+            const offset = { x: grid[first].x - PIECES[first].target.x, y: grid[first].y - PIECES[first].target.y };
+            return { key: PIECES[first].id, path, offset };
+        });
+
+        return { groups, allShapes };
+    }, [landedIndices, liftedPieces, grid, PIECES, metrics]);
 
     // ── Grid validation ───────────────────────────────────────────
     const canPlacePiece = (pieceIdx: number, gridX: number, gridY: number) => {
@@ -378,25 +465,26 @@ export const PuzzleBoard = ({ levelData, image, onPuzzleSolved, timeShared }: Pu
         return true;
     };
 
+    /** True when any cell of piece `a` at (ax, ay) is the same as (or 4-adjacent to, if `touch`) a cell of `b`. */
+    const cellsMeet = (a: number, ax: number, ay: number, b: number, bx: number, by: number, touch: boolean) => {
+        'worklet';
+        for (let j = 0; j < PIECES[a].cells.length; j++) {
+            const cx1 = ax + PIECES[a].cells[j].x;
+            const cy1 = ay + PIECES[a].cells[j].y;
+            for (let k = 0; k < PIECES[b].cells.length; k++) {
+                const dist = Math.abs(cx1 - (bx + PIECES[b].cells[k].x)) + Math.abs(cy1 - (by + PIECES[b].cells[k].y));
+                if (touch ? dist === 1 : dist === 0) return true;
+            }
+        }
+        return false;
+    };
+
     const isOccupied = (pieceIdx: number, gridX: number, gridY: number) => {
         'worklet';
         for (let idx = 0; idx < PIECES.length; idx++) {
             if (idx === pieceIdx) continue;
-
-            const otherX = Math.round(pieceStates[idx].posX.value / STEP);
-            const otherY = Math.round(pieceStates[idx].posY.value / STEP);
-
-            for (let j = 0; j < PIECES[pieceIdx].cells.length; j++) {
-                const cx1 = gridX + PIECES[pieceIdx].cells[j].x;
-                const cy1 = gridY + PIECES[pieceIdx].cells[j].y;
-
-                for (let k = 0; k < PIECES[idx].cells.length; k++) {
-                    const cx2 = otherX + PIECES[idx].cells[k].x;
-                    const cy2 = otherY + PIECES[idx].cells[k].y;
-                    if (cx1 === cx2 && cy1 === cy2) {
-                        return true;
-                    }
-                }
+            if (cellsMeet(pieceIdx, gridX, gridY, idx, pieceStates[idx].gridX.value, pieceStates[idx].gridY.value, false)) {
+                return true;
             }
         }
         return false;
@@ -436,26 +524,22 @@ export const PuzzleBoard = ({ levelData, image, onPuzzleSolved, timeShared }: Pu
             const touchY = e.y - BLEED;
             activePieceIndex.value = -1;
 
+            // Hit-test the actual cells (not the bounding box), so the empty corner of an
+            // L-shaped piece doesn't steal the touch from the piece underneath it.
             for (let i = PIECES.length - 1; i >= 0; i--) {
+                if (!pieceStates[i].isLandedSV.value) continue;
                 const px = pieceStates[i].posX.value;
                 const py = pieceStates[i].posY.value;
 
-                const hitLeft = px - GAP / 2;
-                const hitRight = px - GAP / 2 + PIECE_DIMS[i].w * STEP;
-                const hitTop = py - GAP / 2;
-                const hitBottom = py - GAP / 2 + PIECE_DIMS[i].h * STEP;
-
-                if (
-                    touchX >= hitLeft &&
-                    touchX <= hitRight &&
-                    touchY >= hitTop &&
-                    touchY <= hitBottom
-                ) {
-                    activePieceIndex.value = i;
-                    start.value = { x: px, y: py };
-                    scheduleOnRN(bringToFront, i);
-                    scheduleOnRN(soundManager.playPop);
-                    return;
+                for (let j = 0; j < PIECES[i].cells.length; j++) {
+                    const left = px + PIECES[i].cells[j].x * STEP - GAP / 2;
+                    const top = py + PIECES[i].cells[j].y * STEP - GAP / 2;
+                    if (touchX >= left && touchX <= left + STEP && touchY >= top && touchY <= top + STEP) {
+                        activePieceIndex.value = i;
+                        start.value = { x: px, y: py };
+                        scheduleOnRN(handlePickUp, i);
+                        return;
+                    }
                 }
             }
         },
@@ -479,8 +563,7 @@ export const PuzzleBoard = ({ levelData, image, onPuzzleSolved, timeShared }: Pu
             'worklet';
             const i = activePieceIndex.value;
             if (i < 0) return;
-
-            scheduleOnRN(soundManager.playWhoosh);
+            activePieceIndex.value = -1;
 
             const intendedX = Math.round(pieceStates[i].posX.value / STEP);
             const intendedY = Math.round(pieceStates[i].posY.value / STEP);
@@ -488,50 +571,51 @@ export const PuzzleBoard = ({ levelData, image, onPuzzleSolved, timeShared }: Pu
             const bestSpot = findNearestEmptySpace(i, intendedX, intendedY);
             const gridX = bestSpot.x;
             const gridY = bestSpot.y;
+            pieceStates[i].gridX.value = gridX;
+            pieceStates[i].gridY.value = gridY;
 
-            const snappedX = gridX * STEP;
-            const snappedY = gridY * STEP;
+            // Did it land next to a piece it belongs with?
+            const offX = gridX - PIECES[i].target.x;
+            const offY = gridY - PIECES[i].target.y;
+            let merged = false;
+            for (let idx = 0; idx < PIECES.length && !merged; idx++) {
+                if (idx === i || !pieceStates[idx].isLandedSV.value) continue;
+                const ox = pieceStates[idx].gridX.value;
+                const oy = pieceStates[idx].gridY.value;
+                if (ox - PIECES[idx].target.x !== offX || oy - PIECES[idx].target.y !== offY) continue;
+                merged = cellsMeet(i, gridX, gridY, idx, ox, oy, true);
+            }
 
-            const gridPositions = PIECES.map((_, idx) => {
-                if (idx === i) return { x: gridX, y: gridY };
-                return {
-                    x: Math.round(pieceStates[idx].posX.value / STEP),
-                    y: Math.round(pieceStates[idx].posY.value / STEP),
-                };
-            });
-
-            const dx = gridPositions[0].x - PIECES[0].target.x;
-            const dy = gridPositions[0].y - PIECES[0].target.y;
-            const isComplete = gridPositions.every((pos, idx) => {
-                return pos.x === PIECES[idx].target.x + dx && pos.y === PIECES[idx].target.y + dy;
-            });
-
-            pieceStates[i].posX.value = withTiming(snappedX, { duration: 150 });
-            pieceStates[i].posY.value = withTiming(snappedY, { duration: 150 }, () => {
-                activePieceIndex.value = -1;
-                scheduleOnRN(dropToLayer);
-                if (isComplete) {
-                    isPuzzleCompleted.value = true;
-                    scheduleOnRN(handlePuzzleSolved);
-                    scheduleOnRN(soundManager.playCorrect);
+            const dx = pieceStates[0].gridX.value - PIECES[0].target.x;
+            const dy = pieceStates[0].gridY.value - PIECES[0].target.y;
+            let isComplete = true;
+            for (let idx = 0; idx < PIECES.length; idx++) {
+                if (
+                    pieceStates[idx].gridX.value !== PIECES[idx].target.x + dx ||
+                    pieceStates[idx].gridY.value !== PIECES[idx].target.y + dy
+                ) {
+                    isComplete = false;
+                    break;
                 }
+            }
+            if (isComplete) isPuzzleCompleted.value = true;
+
+            pieceStates[i].posX.value = withTiming(gridX * STEP, { duration: 150 });
+            pieceStates[i].posY.value = withTiming(gridY * STEP, { duration: 150 }, (finished) => {
+                // Not finished = the piece was grabbed again mid-snap; that drag will land it.
+                if (!finished) return;
+                // Sound and re-layering happen when the piece actually lands.
+                scheduleOnRN(handleDropped, i, gridX, gridY, merged, isComplete);
             });
         },
     });
 
-    const basePieces = useMemo(
-        () => Array.from({ length: PIECES.length }, (_, i) => i).filter((i) => i !== frontPiece),
-        [PIECES.length, frontPiece]
-    );
-    const snappedPieces = useMemo(
-        () => basePieces.filter((i) => landedIndices.includes(i)),
-        [basePieces, landedIndices]
-    );
     const floatingPieces = useMemo(() => {
-        const list = basePieces.filter((i) => !landedIndices.includes(i));
-        if (frontPiece !== -1) list.push(frontPiece);
-        return list;
-    }, [basePieces, landedIndices, frontPiece]);
+        const landed = new Set(landedIndices);
+        const lifted = new Set(liftedPieces);
+        const entering = PIECES.map((_, i) => i).filter((i) => !landed.has(i) && !lifted.has(i));
+        return [...entering, ...liftedPieces];
+    }, [PIECES, landedIndices, liftedPieces]);
 
     return (
         <View style={styles.boardContainer}>
@@ -539,104 +623,71 @@ export const PuzzleBoard = ({ levelData, image, onPuzzleSolved, timeShared }: Pu
                 <GestureDetector gesture={panGesture}>
                     <Canvas style={[styles.canvas, { width: boardSize + BLEED * 2, height: boardSize + BLEED * 2 }]}>
                         <Group transform={[{ translateX: BLEED }, { translateY: BLEED }]}>
-                            <Group color={cellColor}>
-                                {Array.from({ length: ROWS }, (r, row) =>
-                                    Array.from({ length: COLS }, (c, col) => (
-                                        <RoundedRect
-                                            key={`${row}-${col}`}
-                                            x={col * STEP}
-                                            y={row * STEP}
-                                            width={cellSize}
-                                            height={cellSize}
-                                            r={6}
+                            <Path path={cellsPath} color={cellColor} />
+
+                            {/* Resting pieces: shadow + edge for all, then each merged group's picture */}
+                            <Path path={restingGroups.allShapes} color={SHADOW_COLOR} transform={[{ translateY: DEPTH * 2 }]}>
+                                <CornerPathEffect r={RADIUS} />
+                            </Path>
+                            <Path path={restingGroups.allShapes} color={EDGE_COLOR} transform={[{ translateY: DEPTH }]}>
+                                <CornerPathEffect r={RADIUS} />
+                            </Path>
+                            {image &&
+                                restingGroups.groups.map((g) => (
+                                    <Path key={g.key} path={g.path}>
+                                        <CornerPathEffect r={RADIUS} />
+                                        <PuzzleImageFill
+                                            image={image}
+                                            x={g.offset.x * STEP - GAP / 2}
+                                            y={g.offset.y * STEP - GAP / 2}
+                                            width={imageWidth}
+                                            height={imageHeight}
                                         />
-                                    ))
-                                )}
-                            </Group>
-
-                            <Path path={basePiecesUnion} color="rgba(0,0,0,0.15)" transform={[{ translateY: 10 }]}>
-                                <CornerPathEffect r={6} />
-                            </Path>
-
-                            <Path path={basePiecesUnion} color="#3d2a1d" transform={[{ translateY: 5 }]}>
-                                <CornerPathEffect r={6} />
-                            </Path>
-
-                            {/* Floating Pieces Shadows & Edges */}
-                            {floatingPieces.map((i) => (
-                                <PieceGroup key={`floating-shadow-${PIECES[i].id}`} state={pieceStates[i]}>
-                                    <Path
-                                        path={piecePaths[i]}
-                                        color="rgba(0,0,0,0.2)"
-                                        transform={[{ translateY: i === frontPiece ? 14 : 10 }]}
-                                    >
-                                        <CornerPathEffect r={6} />
                                     </Path>
-                                    <Path
-                                        path={piecePaths[i]}
-                                        color="#3d2a1d"
-                                        transform={[{ translateY: i === frontPiece ? 8 : 5 }]}
-                                    >
-                                        <CornerPathEffect r={6} />
-                                    </Path>
-                                </PieceGroup>
-                            ))}
+                                ))}
 
-                            {/* Snapped Pieces Images */}
-                            <Mask mask={<Path path={basePiecesUnion} color="white"><CornerPathEffect r={6} /></Path>}>
-                                <Group>
-                                    {snappedPieces.map((i) => (
-                                        <PieceGroup key={`image-${PIECES[i].id}`} state={pieceStates[i]}>
-                                            <Mask mask={<Path path={pieceMaskPaths[i]} color="white" />}>
-                                                {image && (
-                                                    <SkImage
-                                                        image={image}
-                                                        x={-PIECES[i].target.x * STEP - GAP / 2}
-                                                        y={-PIECES[i].target.y * STEP - GAP / 2}
-                                                        width={levelData.puzzle_size.cols * STEP}
-                                                        height={levelData.puzzle_size.rows * STEP}
-                                                        fit="fill"
-                                                    />
-                                                )}
-                                            </Mask>
-                                        </PieceGroup>
-                                    ))}
-                                </Group>
-                            </Mask>
-
-                            {/* Floating Pieces Images */}
-                            {floatingPieces.map((i) => (
-                                <PieceGroup key={`floating-image-${PIECES[i].id}`} state={pieceStates[i]}>
-                                    <Mask mask={<Path path={piecePaths[i]} color="white"><CornerPathEffect r={6} /></Path>}>
+                            {/* Falling / dragged pieces are drawn last, each with its own shadow,
+                                so a lifted piece's shadow always sits on top of the board. */}
+                            {floatingPieces.map((i) => {
+                                const isLifted = liftedPieces.includes(i);
+                                return (
+                                    <PieceGroup key={`floating-${PIECES[i].id}`} state={pieceStates[i]}>
+                                        <Path
+                                            path={piecePaths[i]}
+                                            color={SHADOW_COLOR}
+                                            transform={[{ translateY: isLifted ? DEPTH * 3 : DEPTH * 2 }]}
+                                        >
+                                            <CornerPathEffect r={RADIUS} />
+                                        </Path>
+                                        <Path
+                                            path={piecePaths[i]}
+                                            color={EDGE_COLOR}
+                                            transform={[{ translateY: isLifted ? DEPTH * 1.6 : DEPTH }]}
+                                        >
+                                            <CornerPathEffect r={RADIUS} />
+                                        </Path>
                                         {image && (
-                                            <SkImage
-                                                image={image}
-                                                x={-PIECES[i].target.x * STEP - GAP / 2}
-                                                y={-PIECES[i].target.y * STEP - GAP / 2}
-                                                width={levelData.puzzle_size.cols * STEP}
-                                                height={levelData.puzzle_size.rows * STEP}
-                                                fit="fill"
-                                            />
+                                            <Path path={piecePaths[i]}>
+                                                <CornerPathEffect r={RADIUS} />
+                                                <PuzzleImageFill
+                                                    image={image}
+                                                    x={-PIECES[i].target.x * STEP - GAP / 2}
+                                                    y={-PIECES[i].target.y * STEP - GAP / 2}
+                                                    width={imageWidth}
+                                                    height={imageHeight}
+                                                />
+                                            </Path>
                                         )}
-                                    </Mask>
-                                </PieceGroup>
-                            ))}
+                                    </PieceGroup>
+                                );
+                            })}
 
                             <Group transform={puzzleTransform} opacity={completedOpacity}>
                                 <Group
-                                    clip={Skia.RRectXY(
-                                        Skia.XYWHRect(-GAP / 2, -GAP / 2, levelData.puzzle_size.cols * STEP, levelData.puzzle_size.rows * STEP),
-                                        12,
-                                        12
-                                    )}
+                                    clip={Skia.RRectXY(Skia.XYWHRect(-GAP / 2, -GAP / 2, imageWidth, imageHeight), 12, 12)}
                                     blendMode="screen"
                                 >
-                                    <Rect
-                                        x={-GAP / 2}
-                                        y={-GAP / 2}
-                                        width={levelData.puzzle_size.cols * STEP}
-                                        height={levelData.puzzle_size.rows * STEP}
-                                    >
+                                    <Rect x={-GAP / 2} y={-GAP / 2} width={imageWidth} height={imageHeight}>
                                         <LinearGradient
                                             start={shineStart}
                                             end={shineEnd}
@@ -658,7 +709,7 @@ export const PuzzleBoard = ({ levelData, image, onPuzzleSolved, timeShared }: Pu
             </View>
         </View>
     );
-};
+});
 
 const styles = StyleSheet.create({
     boardContainer: {

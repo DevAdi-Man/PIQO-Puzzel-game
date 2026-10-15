@@ -85,6 +85,9 @@ jest.mock('react-native-reanimated', () => {
     withTiming: (toValue) => toValue,
     withSpring: (toValue) => toValue,
     withDelay: (_delay, animation) => animation,
+    withRepeat: (animation) => animation,
+    withSequence: (...animations) => animations[0],
+    cancelAnimation: jest.fn(),
     interpolateColor: jest.fn(() => '#ffffff'),
     FadeIn: transitionBuilder(),
     FadeInDown: transitionBuilder(),
@@ -102,12 +105,17 @@ jest.mock('react-native-reanimated', () => {
 
 // Mock react-native-sound
 jest.mock('react-native-sound', () => {
-  const SoundMock = jest.fn().mockImplementation(() => ({
-    setVolume: jest.fn(),
-    play: jest.fn((cb) => cb && cb(true)),
-    stop: jest.fn((cb) => cb && cb()),
-    release: jest.fn(),
-  }));
+  // Like the native module, report "loaded" asynchronously after construction.
+  const SoundMock = jest.fn().mockImplementation((_uri, _basePath, onLoad) => {
+    Promise.resolve().then(() => onLoad && onLoad(null));
+    return {
+      setVolume: jest.fn(),
+      setCurrentTime: jest.fn(),
+      play: jest.fn((cb) => cb && cb(true)),
+      stop: jest.fn((cb) => cb && cb()),
+      release: jest.fn(),
+    };
+  });
   SoundMock.setCategory = jest.fn();
   return SoundMock;
 });
@@ -135,6 +143,8 @@ jest.mock('@shopify/react-native-skia', () => {
 
   const mockPath = {
     addRect: jest.fn(),
+    addRRect: jest.fn(),
+    simplify: jest.fn(),
     addPath: jest.fn(),
     op: jest.fn(),
     transform: jest.fn(),
@@ -150,6 +160,7 @@ jest.mock('@shopify/react-native-skia', () => {
     Mask: MockComponent,
     CornerPathEffect: MockComponent,
     Image: MockComponent,
+    ImageShader: MockComponent,
     useImage: jest.fn(() => ({ width: 100, height: 100 })),
     vec: jest.fn((x, y) => ({ x, y })),
     PathOp: { Union: 0 },

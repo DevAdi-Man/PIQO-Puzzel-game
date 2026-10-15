@@ -10,7 +10,6 @@ import Animated, {
     useDerivedValue,
     withSpring,
     interpolateColor,
-    withTiming,
     useAnimatedStyle,
 } from 'react-native-reanimated';
 import { useNavigation } from '@react-navigation/native';
@@ -38,7 +37,10 @@ const backIconPath = Skia.Path.MakeFromSVGString(
 export const PlayScreen = () => {
     const navigation = useNavigation<any>();
     // ── Persistent State ──────────────────────────────────────────
-    const { currentLevelId, completeLevel, saveLevelStars, resetProgress } = useLevelStore();
+    const currentLevelId = useLevelStore((state) => state.currentLevelId);
+    const completeLevel = useLevelStore((state) => state.completeLevel);
+    const saveLevelStars = useLevelStore((state) => state.saveLevelStars);
+    const resetProgress = useLevelStore((state) => state.resetProgress);
 
     // Find the level config from the JSON file
     const levelData = levelsData.find((l) => l.level_id === currentLevelId) || levelsData[0];
@@ -91,9 +93,11 @@ export const PlayScreen = () => {
         return () => clearInterval(interval);
     }, [isSolved]);
 
+    // Stepped once per second rather than animated: each step is an invisible 1/300 colour change,
+    // and a continuous 1s animation kept the whole board canvas redrawing every frame.
     const timeShared = useSharedValue(timeLeft);
     useEffect(() => {
-        timeShared.value = withTiming(timeLeft, { duration: 1000 });
+        timeShared.value = timeLeft;
     }, [timeLeft, timeShared]);
 
     const animatedBgStyle = useAnimatedStyle(() => {
